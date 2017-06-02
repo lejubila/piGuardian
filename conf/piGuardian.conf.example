@@ -1,0 +1,61 @@
+# Log file
+LOG_FILE="/home/pi/piGuardian/log/piGuardian.log"
+LOG_FILE_MAX_SIZE=1048576 # 1MB
+
+# Status directory
+STATUS_DIR="/home/pi/piGuardian/state"
+
+# Posizione gpio
+GPIO="/usr/local/bin/gpio"
+
+# Posizione js
+#JQ="/usr/local/bin/jq"
+
+# Percorso curl
+#CURL="/usr/bin/curl"
+
+# Percorso wc
+WC="/usr/bin/wc"
+
+# Percorso gzip
+GZIP="/bin/gzip"
+
+# Percorso mv
+MV="/bin/mv"
+
+# Percorso di tr
+TR="/usr/bin/tr"
+
+# Percorso di cut
+CUT="/usr/bin/cut"
+
+# Percorso tcpserver
+#TCPSERVER="/usr/bin/tcpserver"
+
+# Percorso cron
+#CRONTAB="/usr/bin/crontab"
+
+# Percorso grep
+GREP="/bin/grep"
+
+# Percorsp sed
+SED="/bin/sed"
+
+# Percorso readlink
+READLINK="/bin/readlink"
+
+# Valore in ingresso sul gpio definito in RAIN_GPIO che indica lo stato di pioggia
+PERIMETRAL_GPIO_STATE=1
+
+# Numero totale di sensori perimetrali
+PERIMETRAL_TOTAL=1
+
+# Definizione dei sensori perimetrali
+PERIMETRAL1_ALIAS="P1" 	#
+PERIMETRAL1_GPIO=17	# Gpio 0 / Physical 11
+
+
+# Indirizzo ip e porta di ascolto del socket server
+#TCPSERVER_IP="127.0.0.1"
+#TCPSERVER_PORT="8084"
+
