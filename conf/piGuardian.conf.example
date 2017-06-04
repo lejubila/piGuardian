@@ -44,16 +44,24 @@ SED="/bin/sed"
 # Percorso readlink
 READLINK="/bin/readlink"
 
-# Valore in ingresso sul gpio definito in RAIN_GPIO che indica lo stato di pioggia
+# Tempo di attesa tra una lettura e l'altra dei sensori
+DELAY_LOOP_STATE=0.05
+
+# Valore in ingresso dei gpio relativi ai sensori perimetrali che indica lo stato di apertura
 PERIMETRAL_GPIO_STATE=1
 
 # Numero totale di sensori perimetrali
-PERIMETRAL_TOTAL=1
+PERIMETRAL_TOTAL=3
 
 # Definizione dei sensori perimetrali
-PERIMETRAL1_ALIAS="P1" 	#
-PERIMETRAL1_GPIO=17	# Gpio 0 / Physical 11
+PERIMETRAL1_ALIAS="P1" 			#
+PERIMETRAL1_GPIO=17			# Gpio 0 / Physical 11
 
+PERIMETRAL2_ALIAS="PT_FINESTRE" 	#
+PERIMETRAL2_GPIO=27			# Gpio 2 / Physical 13
+
+PERIMETRAL3_ALIAS="PT_PORTE" 		#
+PERIMETRAL3_GPIO=22			# Gpio 3 / Physical 15
 
 # Indirizzo ip e porta di ascolto del socket server
 #TCPSERVER_IP="127.0.0.1"

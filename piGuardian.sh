@@ -155,10 +155,10 @@ function perimetral_get_state {
 function perimetral_get_gpio4alias {
 	for i in $(seq $PERIMETRAL_TOTAL)
 	do
-		g=PERIMETRAL"$i"_GPIO
-		a=PERIMETRAL"$i"_ALIAS
-		gv=${!g}
-		av=${!a}
+		local g=PERIMETRAL"$i"_GPIO
+		local a=PERIMETRAL"$i"_ALIAS
+		local gv=${!g}
+		local av=${!a}
 		if [ "$av" == "$1" ]; then
 			return $gv
 		fi
@@ -171,13 +171,13 @@ function perimetral_get_gpio4alias {
 
 #
 # Recupera il numero di sensore perimetrale in base all'alias
-# $1 alias dell'elettrovalvola
+# $1 alias del sensore
 #
 function perimetral_get_number4alias {
 	for i in $(seq $PERIMETRAL_TOTAL)
 	do
-		a=PERIMETRAL"$i"_ALIAS
-		av=${!a}
+		local a=PERIMETRAL"$i"_ALIAS
+		local av=${!a}
 		if [ "$av" == "$1" ]; then
 			return $i
 		fi
@@ -189,8 +189,26 @@ function perimetral_get_number4alias {
 }
 
 #
+# Recupera l'alias di sensore perimetrale in base al numero
+# $1 numero del sensore
+#
+function perimetral_get_alias4number {
+	local n=PERIMETRAL"$1"_ALIAS
+	local a=${!n}
+	
+	if [ ! -z "$a" ]; then
+		echo "$a"
+		return
+	fi
+
+	log_write "ERROR perimetral sensor number not found: $1"
+	message_write "warning" "Perimetral sensor number not found"
+	exit 1
+}
+
+#
 # Verifica se l'alias di una sensore perimetrale esiste
-# $1 alias dell'elettrovalvola
+# $1 alias del sensore
 #
 function perimetral_alias_exists {
 	local vret='FALSE'
@@ -508,6 +526,8 @@ function show_usage {
 	echo -e ""
 	echo -e "Usage:"
 	echo -e "\t$NAME_SCRIPT init                                         initialize systm"
+	echo -e "\t$NAME_SCRIPT start_guard                                  start monitoring"
+
 	echo -e "\t$NAME_SCRIPT perimetral_list_alias                        view list of perimetral sensor"
 	echo -e "\t$NAME_SCRIPT perimetral_status alias                      show perimetral sensor status"
 	echo -e "\t$NAME_SCRIPT sensor_status_all                            show all sensor status"
@@ -733,6 +753,54 @@ list_descendants ()
   echo "$children"
 }
 
+#
+# Avvia la sorveglianza
+#
+function start_guard()
+{
+
+	log_write "Guard start"
+
+	while [ 1 ]; do
+
+		local SENSORS=`perimetral_list_alias`
+		#local SENSORS=`perimetral_list_alias | $TR '\n' ' '`
+#		SENSOR=`echo "$COMMAND"|$TR '\n' ' '`
+
+#echo "$SENSORS"
+#echo "************"
+
+		# Controlla i sensori perimetrali
+		for a in $SENSORS
+		do
+			perimetral_get_gpio4alias $a
+			local G=$?
+
+			local STATE=`$GPIO -g read $G`
+			if [ "$STATE" == "$PERIMETRAL_GPIO_STATE" ]; then
+
+				echo "$a - ALLARME"
+
+			else
+
+				echo "$a - CHIUSO"
+
+			fi
+
+			sleep $DELAY_LOOP_STATE
+		done
+
+
+
+
+
+
+	done
+
+	log_write "Guard end"
+
+}
+
 function debug1 {
 	. "$DIR_SCRIPT/debug/debug1.sh"	
 }
@@ -785,6 +853,11 @@ case "$1" in
 	sensor_status_all)
 		sensor_status_all
 		;;
+
+	start_guard)
+		start_guard
+		;;
+		
 
         start_socket_server)
                 if [ -f "$TCPSERVER_PID_FILE" ]; then
