@@ -13,14 +13,14 @@ function initialize {
 	log_write "Run initialize"
 
 	# Elimina tutti gli stati preesistenti
-	rm -f "$STATUS_DIR"/*
+	#rm -f "$STATUS_DIR"/*
 
 	# Inizializza i gpio dei sensori perimetrali 
 	for i in $(seq $PERIMETRAL_TOTAL)
 	do
 		g=PERIMETRAL"$i"_GPIO
 		$GPIO -g mode ${!g} in			# setta il gpio nella modalita di lettura
-		perimetral_set_state $i 0
+		#perimetral_set_state $i 0
 	done
 
 	log_write "End initialize"
@@ -133,19 +133,27 @@ function message_write {
 }
 
 #
-# Imposta lo stato di un sensore perimetrale
-# $1 numero del sensore 
+# Imposta lo stato di un sensore 
+# $1 alias del sensore
 # $2 stato da scrivere
 #
-function perimetral_set_state {
-	echo "$2" > "$STATUS_DIR/perimetral$1"
+function sensor_set_state {
+	echo "$2" > "$STATUS_DIR/$1"
 }
 
 #
-# Legge lo stato di un sensore perimetrale
+# Legge lo stato di un sensore 
+# $1 alias del sensore
 #
-function perimetral_get_state {
-	return `cat "$STATUS_DIR/perimetral$1"`
+function sensor_get_state {
+	local STATE_FILE="$STATUS_DIR/$1"
+
+	if [ ! -e "$STATE_FILE" ]; then
+		sensor_set_state "$1" 0
+		echo 0
+	else
+		cat "$STATE_FILE"
+	fi
 }
 
 #
@@ -245,23 +253,29 @@ function sensor_status_all {
 	do
 		a=PERIMETRAL"$i"_ALIAS
 		av=${!a}
-		perimetral_get_state $i
-		echo -e "$av: $?"
+		local s=`perimetral_get_status $av`
+		echo -e "$av: $s"
 	done
 }
 
 #
 # Mostra lo stato di un sensore perimetrale
-# $1 alias elettrovalvola
+# $1 alias sensore
 #
-function perimetral_status {
-	perimetral_get_number4alias $1
-	i=$?
-	perimetral_get_state $i
-	local state=$?
-	echo -e "$state"
-	return $state
+function perimetral_get_status {
+	sensor_get_state "perimetral_$1"
 }
+
+#
+# Scrive lo stato di un sensore perimetrale
+# $1 alias sensore
+# $2 stato
+#
+function perimetral_set_status {
+	sensor_set_state "perimetral_$1" $2
+}
+
+
 
 function perimetral_list_alias {
 
@@ -273,6 +287,79 @@ function perimetral_list_alias {
                 done
 
 }
+
+#
+# Legge se è abiltiato l'allarme
+#
+function alarm_get_status {
+	sensor_get_state "alarm_enabled"
+}
+
+#
+# Abilita l'allarme
+#
+function alarm_enable {
+	local TIME_ALARM=`date +%s`
+	sensor_set_state "alarm_enabled" $TIME_ALARM
+	log_write "Alarm enabled $TIME_ALARM"
+}
+
+#
+# Disabilita l'allarme
+#
+function alarm_disable {
+	local TIME_ALARM=`date +%s`
+	sensor_set_state "alarm_enabled" 0
+	log_write "Alarm disabled $TIME_ALARM"
+
+	if [ "$(alarm_fired_get_status)" -gt 0 ]; then
+		alarm_unfired
+	fi
+}
+
+#
+# Legge se è scattato l'allarme
+#
+function alarm_fired_get_status {
+	sensor_get_state "alarm_fired"
+}
+
+#
+# Fa scattare l'allarme
+#
+function alarm_fired {
+	local TIME_ALARM=`date +%s`
+	sensor_set_state "alarm_fired" $TIME_ALARM
+	local OUTPUT="WARNING !!! Alarm fired $TIME_ALARM"
+	log_write "$OUTPUT"
+	echo "$OUTPUT"
+
+	#
+	# @todo inserire qui comandi gpio per fare scattare l'allarme
+	#
+
+}
+
+#
+# Disattiva l'allarme scattato
+#
+function alarm_unfired {
+	local TIME_ALARM=`date +%s`
+	sensor_set_state "alarm_fired" 0
+	local OUTPUT="Alarm unfired $TIME_ALARM"
+	log_write "$OUTPUT"
+	echo "$OUTPUT"
+
+	#
+	# @todo inserire qui comandi gpio per staccare l'allarme 
+	#
+
+}
+
+
+
+
+
 
 #
 # Elimina una tipoliga di schedulazione dal crontab dell'utente
@@ -527,7 +614,13 @@ function show_usage {
 	echo -e "Usage:"
 	echo -e "\t$NAME_SCRIPT init                                         initialize systm"
 	echo -e "\t$NAME_SCRIPT start_guard                                  start monitoring"
-
+	echo -e "\n"
+	echo -e "\t$NAME_SCRIPT alarm_enable                                 enable alarm"
+	echo -e "\t$NAME_SCRIPT alarm_disable                                disable alarm"
+	echo -e "\t$NAME_SCRIPT alarm_get_status                             show status alarm"
+	echo -e "\t$NAME_SCRIPT alarm_fired                                  fired alarm"
+	echo -e "\t$NAME_SCRIPT alarm_unfired                                unfired alarm"
+	echo -e "\n"
 	echo -e "\t$NAME_SCRIPT perimetral_list_alias                        view list of perimetral sensor"
 	echo -e "\t$NAME_SCRIPT perimetral_status alias                      show perimetral sensor status"
 	echo -e "\t$NAME_SCRIPT sensor_status_all                            show all sensor status"
@@ -761,30 +854,62 @@ function start_guard()
 
 	log_write "Guard start"
 
+	local SENSORS_PERIMETRAL=`perimetral_list_alias`
+
+	declare -A LAST_STATE
+
+	#
+	# Recupera l'ultimo stato dei sensori
+	#
+	for a in $SENSORS_PERIMETRAL
+	do
+		LAST_STATE[perimetral_$a]=`perimetral_get_status $a`
+		#echo $a: ${LAST_STATE[perimetral_$a]}
+	done
+
+
+	#
+	# Inizio ciclo di lettura dei sensori
+	#
 	while [ 1 ]; do
 
-		local SENSORS=`perimetral_list_alias`
-		#local SENSORS=`perimetral_list_alias | $TR '\n' ' '`
-#		SENSOR=`echo "$COMMAND"|$TR '\n' ' '`
-
-#echo "$SENSORS"
-#echo "************"
-
 		# Controlla i sensori perimetrali
-		for a in $SENSORS
+		for a in $SENSORS_PERIMETRAL
 		do
 			perimetral_get_gpio4alias $a
 			local G=$?
-
 			local STATE=`$GPIO -g read $G`
+
+			# Sensore in allarme
 			if [ "$STATE" == "$PERIMETRAL_GPIO_STATE" ]; then
+				# Passa da stato di non allarme ad allarme
+				if [ "${LAST_STATE[perimetral_$a]}" -eq 0 ]; then
+					local TIME_OPEN=`date +%s`
+					perimetral_set_status $a $TIME_OPEN
+					LAST_STATE[perimetral_$a]=$TIME_OPEN
+					local OUTPUT="Perimetral $a: OPEN $TIME_OPEN"
+					log_write "$OUTPUT"
+					echo "$OUTPUT"
+				fi
 
-				echo "$a - ALLARME"
+				# Fa scattare l'allarme se è abiltiato e se non è ancora scattato
+				local ALARM_ENABLED=`alarm_get_status`
+				local ALARM_FIRED=`alarm_fired_get_status`
+				if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
+					alarm_fired
+				fi
 
+			# Il sensore non è in allarme
 			else
-
-				echo "$a - CHIUSO"
-
+				# Passa da stato di allarme a non allarme
+				if [ "${LAST_STATE[perimetral_$a]}" -gt 0 ]; then
+					local TIME_CLOSE=`date +%s`
+					perimetral_set_status $a 0
+					LAST_STATE[perimetral_$a]=0
+					local OUTPUT="Perimetral $a: CLOSE $TIME_CLOSE"
+					log_write "$OUTPUT"
+					echo "$OUTPUT"
+				fi
 			fi
 
 			sleep $DELAY_LOOP_STATE
@@ -847,7 +972,7 @@ case "$1" in
 		;;
 
 	perimetral_status)
-		perimetral_status $2
+		perimetral_get_status $2
 		;;
 
 	sensor_status_all)
@@ -857,7 +982,27 @@ case "$1" in
 	start_guard)
 		start_guard
 		;;
-		
+
+	alarm_enable)
+		alarm_enable
+		;;
+
+	alarm_disable)
+		alarm_disable
+		;;
+
+	alarm_get_status)
+		alarm_get_status
+		;;
+
+	alarm_fired)
+		alarn_fired
+		;;
+
+	alarm_unfired)
+		alarm_unfired
+		;;
+
 
         start_socket_server)
                 if [ -f "$TCPSERVER_PID_FILE" ]; then
