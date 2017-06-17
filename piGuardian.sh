@@ -455,6 +455,8 @@ function alarm_enable {
 	local TIME_ALARM=`date +%s`
 	sensor_set_state "alarm_enabled" $TIME_ALARM
 	log_write "Alarm enabled $TIME_ALARM"
+
+	trigger_event "alarm_enable" ""
 }
 
 #
@@ -468,6 +470,8 @@ function alarm_disable {
 	if [ "$(alarm_fired_get_status)" -gt 0 ]; then
 		alarm_unfired
 	fi
+
+	trigger_event "alarm_disable" ""
 }
 
 #
@@ -479,11 +483,17 @@ function alarm_fired_get_status {
 
 #
 # Fa scattare l'allarme
+# $1 indica chi ha fatto scattare l'allarme
 #
 function alarm_fired {
+	local cause="UNKNOW"
+	if [[ ! -z $1 ]]; then
+		cause=$1
+	fi
+
 	local TIME_ALARM=`date +%s`
 	sensor_set_state "alarm_fired" $TIME_ALARM
-	local OUTPUT="WARNING !!! Alarm fired $TIME_ALARM"
+	local OUTPUT="WARNING !!! Alarm fired ($cause) $TIME_ALARM"
 	log_write "$OUTPUT"
 	echo "$OUTPUT"
 
@@ -497,6 +507,8 @@ function alarm_fired {
 			$GPIO -g write ${!g} $SIREN_GPIO_STATE_ON
 		done
 	fi
+
+	trigger_event "alarm_fired" "$cause"
 
 }
 
@@ -520,6 +532,9 @@ function alarm_unfired {
 			$GPIO -g write ${!g} $SIREN_GPIO_STATE_OFF
 		done
 	fi
+
+
+	trigger_event "alarm_unfired" ""
 
 }
 
@@ -772,6 +787,31 @@ function set_cron_check_rain_sensor {
 
 	cron_del "check_rain_sensor" 2> /dev/null
 	cron_add "check_rain_sensor"
+}
+
+#
+# Triggered an event and executge associated scripts
+# $1 event
+# $2 cause
+#
+
+function trigger_event {
+
+	local EVENT="$1"
+	local CAUSE="$2"
+	local current_event_dir="$EVENT_DIR/$EVENT"
+
+	if [ -d "$current_event_dir" ]; then
+		local FILES="$current_event_dir/*"
+		for f in $FILES
+		do
+			if [ -x "$f" ]; then
+				$f "$EVENT" "$CAUSE" `date +%s`  &> /dev/null &
+			fi
+		done
+
+	fi
+
 }
 
 
@@ -1076,7 +1116,7 @@ function start_guard()
 	local ALARM_ENABLED=`alarm_get_status`
 	local ALARM_FIRED=`alarm_fired_get_status`
 	if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
-		alarm_fired
+		alarm_fired "reactive"
 	else
 		sensor_set_state "alarm_fired" 0
 	fi
@@ -1105,13 +1145,14 @@ function start_guard()
 					local OUTPUT="Perimetral $a: OPEN $TIME_OPEN"
 					log_write "$OUTPUT"
 					echo "$OUTPUT"
+					trigger_event "perimetral_open" "$a"
 				fi
 
 				# Fa scattare l'allarme se è abiltiato e se non è ancora scattato
 				local ALARM_ENABLED=`alarm_get_status`
 				local ALARM_FIRED=`alarm_fired_get_status`
 				if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
-					alarm_fired
+					alarm_fired "Perimetral $a"
 				fi
 
 			# Il sensore non è in allarme
@@ -1124,6 +1165,7 @@ function start_guard()
 					local OUTPUT="Perimetral $a: CLOSE $TIME_CLOSE"
 					log_write "$OUTPUT"
 					echo "$OUTPUT"
+					trigger_event "perimetral_close" "$a"
 				fi
 			fi
 
@@ -1150,13 +1192,14 @@ function start_guard()
 					local OUTPUT="Pir $a: OPEN $TIME_OPEN"
 					log_write "$OUTPUT"
 					echo "$OUTPUT"
+					trigger_event "pir_detect" "$a"
 				fi
 
 				# Fa scattare l'allarme se è abiltiato e se non è ancora scattato
 				local ALARM_ENABLED=`alarm_get_status`
 				local ALARM_FIRED=`alarm_fired_get_status`
 				if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
-					alarm_fired
+					alarm_fired "Pir $a"
 				fi
 
 			# Il sensore non è in allarme
@@ -1294,7 +1337,7 @@ case "$1" in
 		;;
 
 	alarm_fired)
-		alarm_fired
+		alarm_fired "manual activate"
 		;;
 
 	alarm_unfired)

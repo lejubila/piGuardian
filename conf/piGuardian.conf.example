@@ -5,6 +5,9 @@ LOG_FILE_MAX_SIZE=1048576 # 1MB
 # Status directory
 STATUS_DIR="/home/pi/piGuardian/state"
 
+# Event directory
+EVENT_DIR="/home/pi/piGuardian/events"
+
 # Posizione gpio
 GPIO="/usr/local/bin/gpio"
 
@@ -72,7 +75,7 @@ PIR_GPIO_STATE=1
 PIR_TOTAL=0
 
 # Definizione dei sensori pir
-# PIR_ALIAS="P1" 				#
+# PIR_ALIAS="P1" 			#
 # PIR1_GPIO=17				# Gpio 0 / Physical 11
 
 
