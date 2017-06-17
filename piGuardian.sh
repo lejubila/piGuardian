@@ -23,6 +23,25 @@ function initialize {
 		#perimetral_set_state $i 0
 	done
 
+	# Inizializza i gpio dei sensori pir 
+	for i in $(seq $PERIMETRAL_TOTAL)
+	do
+		g=PIR"$i"_GPIO
+		$GPIO -g mode ${!g} in			# setta il gpio nella modalita di lettura
+		#pir_set_state $i 0
+	done
+
+
+	# Inizializza i gpio delle sirene e le spenge
+	if [ "$SIREN_TOTAL" -gt 0 ]; then
+		for i in $(seq $SIREN_TOTAL)
+		do
+			g=SIREN"$i"_GPIO
+			$GPIO -g mode ${!g} out
+		done
+		alarm_unfired > /dev/null
+	fi
+
 	log_write "End initialize"
 
 }
@@ -157,6 +176,29 @@ function sensor_get_state {
 }
 
 #
+# Mostra lo stato di tutti i sensori
+#
+function sensor_status_all {
+	for i in $(seq $PERIMETRAL_TOTAL)
+	do
+		a=PERIMETRAL"$i"_ALIAS
+		av=${!a}
+		local s=`perimetral_get_status $av`
+		echo -e "$av: $s"
+	done
+
+	for i in $(seq $PIR_TOTAL)
+	do
+		a=PIR"$i"_ALIAS
+		av=${!a}
+		local s=`pir_get_status $av`
+		echo -e "$av: $s"
+	done
+
+}
+
+
+#
 # Passando un alias di un sensore perimetrale recupera il numero gpio associato 
 # $1 alias sensore
 #
@@ -246,19 +288,6 @@ function perimetral_get_gpio4number {
 }
 
 #
-# Mostra lo stato di tutti i sensori
-#
-function sensor_status_all {
-	for i in $(seq $PERIMETRAL_TOTAL)
-	do
-		a=PERIMETRAL"$i"_ALIAS
-		av=${!a}
-		local s=`perimetral_get_status $av`
-		echo -e "$av: $s"
-	done
-}
-
-#
 # Mostra lo stato di un sensore perimetrale
 # $1 alias sensore
 #
@@ -275,8 +304,9 @@ function perimetral_set_status {
 	sensor_set_state "perimetral_$1" $2
 }
 
-
-
+#
+# Mostra lo stato dei sensori perimetrali
+#
 function perimetral_list_alias {
 
                 for i in $(seq $PERIMETRAL_TOTAL)
@@ -287,6 +317,129 @@ function perimetral_list_alias {
                 done
 
 }
+
+
+
+#
+# Passando un alias di un sensore pir recupera il numero gpio associato 
+# $1 alias sensore
+#
+function pir_get_gpio4alias {
+	for i in $(seq $PIR_TOTAL)
+	do
+		local g=PIR"$i"_GPIO
+		local a=PIR"$i"_ALIAS
+		local gv=${!g}
+		local av=${!a}
+		if [ "$av" == "$1" ]; then
+			return $gv
+		fi
+	done
+
+	log_write "ERROR pir sensor alias not found: $1"
+	message_write "warning" "Pir sensor alias not found"
+	exit 1
+}
+
+#
+# Recupera il numero di sensore pir in base all'alias
+# $1 alias del sensore
+#
+function pir_get_number4alias {
+	for i in $(seq $PIR_TOTAL)
+	do
+		local a=PIR"$i"_ALIAS
+		local av=${!a}
+		if [ "$av" == "$1" ]; then
+			return $i
+		fi
+	done
+
+	log_write "ERROR pir sensor alias not found: $1"
+	message_write "warning" "Pir sensor alias not found"
+	exit 1
+}
+
+#
+# Recupera l'alias di sensore pir in base al numero
+# $1 numero del sensore
+#
+function pir_get_alias4number {
+	local n=PIR"$1"_ALIAS
+	local a=${!n}
+	
+	if [ ! -z "$a" ]; then
+		echo "$a"
+		return
+	fi
+
+	log_write "ERROR pir sensor number not found: $1"
+	message_write "warning" "Pir sensor number not found"
+	exit 1
+}
+
+#
+# Verifica se l'alias di una sensore pir esiste
+# $1 alias del sensore
+#
+function pir_alias_exists {
+	local vret='FALSE'
+	for i in $(seq $PIR_TOTAL)
+	do
+		a=PIR"$i"_ALIAS
+		av=${!a}
+		if [ "$av" == "$1" ]; then
+			vret='TRUE'
+		fi
+	done
+
+	echo $vret
+}
+
+#
+# Recupera il numero di gpio associato in base al numero di sensore pir 
+# $1 numero sensore
+#
+function pir_get_gpio4number {
+#	echo "numero ev $1"
+	i=$1
+	g=PIR"$i"_GPIO
+	gv=${!g}
+#	echo "gv = $gv"
+	return $gv
+}
+
+#
+# Mostra lo stato di un sensore pir
+# $1 alias sensore
+#
+function pir_get_status {
+	sensor_get_state "pir_$1"
+}
+
+#
+# Scrive lo stato di un sensore pir
+# $1 alias sensore
+# $2 stato
+#
+function pir_set_status {
+	sensor_set_state "pir_$1" $2
+}
+
+#
+# Mostra lo stato dei sensori pir
+#
+function pir_list_alias {
+
+                for i in $(seq $PIR_TOTAL)
+                do
+                        local a=PIR"$i"_ALIAS
+                        local al=${!a}
+                        echo $al
+                done
+
+}
+
 
 #
 # Legge se è abiltiato l'allarme
@@ -335,8 +488,15 @@ function alarm_fired {
 	echo "$OUTPUT"
 
 	#
-	# @todo inserire qui comandi gpio per fare scattare l'allarme
+	# Attiva le sirene
 	#
+	if [ "$SIREN_TOTAL" -gt 0 ]; then
+		for i in $(seq $SIREN_TOTAL)
+		do
+			g=SIREN"$i"_GPIO
+			$GPIO -g write ${!g} $SIREN_GPIO_STATE_ON
+		done
+	fi
 
 }
 
@@ -351,8 +511,15 @@ function alarm_unfired {
 	echo "$OUTPUT"
 
 	#
-	# @todo inserire qui comandi gpio per staccare l'allarme 
+	# Disattiva le sirene 
 	#
+	if [ "$SIREN_TOTAL" -gt 0 ]; then
+		for i in $(seq $SIREN_TOTAL)
+		do
+			g=SIREN"$i"_GPIO
+			$GPIO -g write ${!g} $SIREN_GPIO_STATE_OFF
+		done
+	fi
 
 }
 
@@ -613,7 +780,10 @@ function show_usage {
 	echo -e ""
 	echo -e "Usage:"
 	echo -e "\t$NAME_SCRIPT init                                         initialize systm"
-	echo -e "\t$NAME_SCRIPT start_guard                                  start monitoring"
+	echo -e "\t$NAME_SCRIPT start_guard [fg|force]                       start monitoring, with 'fg' parameter run monitoring in foreground mode"
+	echo -e "\t                                                           with 'fg' parameter run monitoring in foreground mode"
+	echo -e "\t                                                           with 'force' parameter force close guard service if already open"
+	echo -e "\t$NAME_SCRIPT stop_guard                                   stop guard daemon"
 	echo -e "\n"
 	echo -e "\t$NAME_SCRIPT alarm_enable                                 enable alarm"
 	echo -e "\t$NAME_SCRIPT alarm_disable                                disable alarm"
@@ -623,8 +793,11 @@ function show_usage {
 	echo -e "\n"
 	echo -e "\t$NAME_SCRIPT perimetral_list_alias                        view list of perimetral sensor"
 	echo -e "\t$NAME_SCRIPT perimetral_status alias                      show perimetral sensor status"
+	echo -e "\t$NAME_SCRIPT pir_list_alias                               view list of pir sensor"
+	echo -e "\t$NAME_SCRIPT pir_status alias                             show pir sensor status"
 	echo -e "\t$NAME_SCRIPT sensor_status_all                            show all sensor status"
-	echo -e "\t$NAME_SCRIPT start_socket_server [force]                  start socket server, with 'force' parameter force close socket server if already open"
+	echo -e "\t$NAME_SCRIPT start_socket_server [force]                  start socket server"
+	echo -e "\t                                                           with 'force' parameter force close socket server if already open"
 	echo -e "\t$NAME_SCRIPT stop_socket_server                           stop socket server"
 	echo -e "\n"
 	echo -e "\t$NAME_SCRIPT set_cron_init                                set crontab for initialize control unit"
@@ -634,6 +807,30 @@ function show_usage {
 	echo -e "\n"
 	echo -e "\t$NAME_SCRIPT debug1 [parameter]|[parameter]|..]           Run debug code 1"
 	echo -e "\t$NAME_SCRIPT debug2 [parameter]|[parameter]|..]           Run debug code 2"
+}
+
+function start_guard_daemon {
+
+	rm -f "$GUARD_PID_FILE"
+	echo $GUARD_PID_SCRIPT > "$GUARD_PID_FILE"
+	start_guard 
+
+}
+
+function stop_guard {
+
+        if [ ! -f "$GUARD_PID_FILE" ]; then
+                echo "Daemon is not running"
+                exit 1
+        fi
+
+	log_write "stop guard daemon"
+	echo "stop guard daemon"
+
+        kill -9 $(list_descendants `cat "$GUARD_PID_FILE"`) 2> /dev/null
+        kill -9 `cat "$GUARD_PID_FILE"` 2> /dev/null
+        rm -f "$GUARD_PID_FILE"
+
 }
 
 function start_socket_server {
@@ -855,6 +1052,7 @@ function start_guard()
 	log_write "Guard start"
 
 	local SENSORS_PERIMETRAL=`perimetral_list_alias`
+	local SENSORS_PIR=`pir_list_alias`
 
 	declare -A LAST_STATE
 
@@ -866,14 +1064,31 @@ function start_guard()
 		LAST_STATE[perimetral_$a]=`perimetral_get_status $a`
 		#echo $a: ${LAST_STATE[perimetral_$a]}
 	done
+	for a in $SENSORS_PIR
+	do
+		LAST_STATE[pir_$a]=`pir_get_status $a`
+		#echo $a: ${LAST_STATE[perimetral_$a]}
+	done
 
+
+
+	# Fa scattare l'allarme se era già attivato prefentemente altrimenti ne imposta lo stato a zero
+	local ALARM_ENABLED=`alarm_get_status`
+	local ALARM_FIRED=`alarm_fired_get_status`
+	if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
+		alarm_fired
+	else
+		sensor_set_state "alarm_fired" 0
+	fi
 
 	#
 	# Inizio ciclo di lettura dei sensori
 	#
 	while [ 1 ]; do
 
+		#
 		# Controlla i sensori perimetrali
+		#
 		for a in $SENSORS_PERIMETRAL
 		do
 			perimetral_get_gpio4alias $a
@@ -916,7 +1131,49 @@ function start_guard()
 		done
 
 
+		#
+		# Controlla i sensori pir
+		#
+		for a in $SENSORS_PIR
+		do
+			pir_get_gpio4alias $a
+			local G=$?
+			local STATE=`$GPIO -g read $G`
 
+			# Sensore in allarme
+			if [ "$STATE" == "$PIR_GPIO_STATE" ]; then
+				# Passa da stato di non allarme ad allarme
+				if [ "${LAST_STATE[pir_$a]}" -eq 0 ]; then
+					local TIME_OPEN=`date +%s`
+					pir_set_status $a $TIME_OPEN
+					LAST_STATE[pir_$a]=$TIME_OPEN
+					local OUTPUT="Pir $a: OPEN $TIME_OPEN"
+					log_write "$OUTPUT"
+					echo "$OUTPUT"
+				fi
+
+				# Fa scattare l'allarme se è abiltiato e se non è ancora scattato
+				local ALARM_ENABLED=`alarm_get_status`
+				local ALARM_FIRED=`alarm_fired_get_status`
+				if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
+					alarm_fired
+				fi
+
+			# Il sensore non è in allarme
+			else
+				# Passa da stato di allarme a non allarme
+				if [ "${LAST_STATE[pir_$a]}" -gt 0 ]; then
+					local TIME_CLOSE=`date +%s`
+					pir_set_status $a 0
+					LAST_STATE[pir_$a]=0
+					local OUTPUT="Pir $a: CLOSE $TIME_CLOSE"
+					log_write "$OUTPUT"
+					echo "$OUTPUT"
+				fi
+			fi
+
+			sleep $DELAY_LOOP_STATE
+		done
 
 
 
@@ -949,6 +1206,10 @@ fi
 TCPSERVER_PID_FILE="$TMP_PATH/piGuardianTcpServer.pid"
 TCPSERVER_PID_SCRIPT=$$
 RUN_FROM_TCPSERVER=0
+
+GUARD_PID_FILE="$TMP_PATH/piGuardianGuard.pid"
+GUARD_PID_SCRIPT=$$
+
 TMP_CRON_FILE="$TMP_PATH/piguardian.user.cron.$$"
 
 if [ -f $CONFIG_ETC ]; then
@@ -975,13 +1236,50 @@ case "$1" in
 		perimetral_get_status $2
 		;;
 
+	pir_list_alias)
+		pir_list_alias
+		;;
+
+	pir_status)
+		pir_get_status $2
+		;;
+
 	sensor_status_all)
 		sensor_status_all
 		;;
 
 	start_guard)
-		start_guard
+		if [ "$2" == "fg" ]; then
+			start_guard
+		else
+
+                	if [ -f "$GUARD_PID_FILE" ]; then
+                        	echo "Daemon is already running, use \"$0 stop_guard\" to stop the service"
+
+				if [ "x$2" == "xforce" ]; then
+					sleep 5
+					stop_guard
+				else
+                        		exit 1
+				fi
+                	fi
+
+                	nohup $0 start_guard_daemon > /dev/null 2>&1 &
+
+                	echo "Daemon is started widh pid $!"
+			log_write "start guard daemon with pid $!"
+
+		fi
 		;;
+
+	start_guard_daemon)
+		start_guard_daemon
+		;;
+
+	stop_guard)
+		stop_guard
+		;;
+
 
 	alarm_enable)
 		alarm_enable
@@ -996,7 +1294,7 @@ case "$1" in
 		;;
 
 	alarm_fired)
-		alarn_fired
+		alarm_fired
 		;;
 
 	alarm_unfired)

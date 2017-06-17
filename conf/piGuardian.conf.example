@@ -47,6 +47,7 @@ READLINK="/bin/readlink"
 # Tempo di attesa tra una lettura e l'altra dei sensori
 DELAY_LOOP_STATE=0.05
 
+
 # Valore in ingresso dei gpio relativi ai sensori perimetrali che indica lo stato di apertura
 PERIMETRAL_GPIO_STATE=1
 
@@ -62,6 +63,34 @@ PERIMETRAL2_GPIO=27			# Gpio 2 / Physical 13
 
 PERIMETRAL3_ALIAS="PT_PORTE" 		#
 PERIMETRAL3_GPIO=22			# Gpio 3 / Physical 15
+
+
+# Valore in ingresso dei gpio relativi ai sensori pir che indica lo stato di apertura
+PIR_GPIO_STATE=1
+
+# Numero totale di sensori pir
+PIR_TOTAL=0
+
+# Definizione dei sensori pir
+# PIR_ALIAS="P1" 				#
+# PIR1_GPIO=17				# Gpio 0 / Physical 11
+
+
+
+
+
+# Valore gpio da scrivere per attivare spengere la sirena
+SIREN_GPIO_STATE_ON=1
+SIREN_GPIO_STATE_OFF=0
+
+# Numero totele di sirene
+SIREN_TOTAL=1
+
+#
+SIREN1_ALIAS="SIRENA_INTERNA"		#
+SIREN1_GPIO="18"			# Gpio 1 / Physical 12
+
+
 
 # Indirizzo ip e porta di ascolto del socket server
 #TCPSERVER_IP="127.0.0.1"
