@@ -75,8 +75,17 @@ PIR_GPIO_STATE=1
 PIR_TOTAL=0
 
 # Definizione dei sensori pir
-# PIR_ALIAS="P1" 			#
-# PIR1_GPIO=17				# Gpio 0 / Physical 11
+PIR1_ALIAS="P1" 			#
+PIR1_GPIO=19				# Gpio 24 / Physical 35
+
+PIR2_ALIAS="PT_INGRESSO" 			#
+PIR2_GPIO=16				# Gpio 27 / Physical 36
+
+PIR3_ALIAS="PT_CUCINA"			#
+PIR3_GPIO=26				# Gpio 25 / Physical 37
+
+PIR4_ALIAS="PT_BAGNO" 			#
+PIR4_GPIO=20				# Gpio 28 / Physical 38
 
 
 

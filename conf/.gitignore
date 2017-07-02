@@ -1,0 +1,4 @@
+# Ignore everything in this directory
+piGuardian.conf
+# Except this file
+!.gitignore

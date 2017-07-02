@@ -42,6 +42,7 @@ function initialize {
 		alarm_unfired > /dev/null
 	fi
 
+	trigger_event "init" ""
 	log_write "End initialize"
 
 }
@@ -1189,7 +1190,7 @@ function start_guard()
 					local TIME_OPEN=`date +%s`
 					pir_set_status $a $TIME_OPEN
 					LAST_STATE[pir_$a]=$TIME_OPEN
-					local OUTPUT="Pir $a: OPEN $TIME_OPEN"
+					local OUTPUT="Pir $a: ALERT $TIME_OPEN"
 					log_write "$OUTPUT"
 					echo "$OUTPUT"
 					trigger_event "pir_detect" "$a"
@@ -1209,7 +1210,7 @@ function start_guard()
 					local TIME_CLOSE=`date +%s`
 					pir_set_status $a 0
 					LAST_STATE[pir_$a]=0
-					local OUTPUT="Pir $a: CLOSE $TIME_CLOSE"
+					local OUTPUT="Pir $a: END ALERT $TIME_CLOSE"
 					log_write "$OUTPUT"
 					echo "$OUTPUT"
 				fi
@@ -1241,7 +1242,7 @@ RELEASE_VERSION=1
 DIR_SCRIPT=`dirname $0`
 NAME_SCRIPT=${0##*/}
 #CONFIG_ETC="/etc/piGarden.conf"
-CONFIG_ETC="/home/pi/piGuardian/conf/piGuardian.conf.example"
+CONFIG_ETC="/home/pi/piGuardian/conf/piGuardian.conf"
 TMP_PATH="/run/shm"
 if [ ! -d "$TMP_PATH" ]; then
 	TMP_PATH="/tmp"
