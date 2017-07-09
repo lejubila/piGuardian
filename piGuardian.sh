@@ -31,6 +31,14 @@ function initialize {
 		#pir_set_state $i 0
 	done
 
+	# Inizializza i gpio dei sensori tamper 
+	for i in $(seq $TAMPER_TOTAL)
+	do
+		g=TAMPER"$i"_GPIO
+		$GPIO -g mode ${!g} in			# setta il gpio nella modalita di lettura
+		#tamper_set_state $i 0
+	done
+
 
 	# Inizializza i gpio delle sirene e le spenge
 	if [ "$SIREN_TOTAL" -gt 0 ]; then
@@ -185,7 +193,7 @@ function sensor_status_all {
 		a=PERIMETRAL"$i"_ALIAS
 		av=${!a}
 		local s=`perimetral_get_status $av`
-		echo -e "$av: $s"
+		echo -e "perimetral $av: $s"
 	done
 
 	for i in $(seq $PIR_TOTAL)
@@ -193,7 +201,15 @@ function sensor_status_all {
 		a=PIR"$i"_ALIAS
 		av=${!a}
 		local s=`pir_get_status $av`
-		echo -e "$av: $s"
+		echo -e "pir $av: $s"
+	done
+
+	for i in $(seq $TAMPER_TOTAL)
+	do
+		a=TAMPER"$i"_ALIAS
+		av=${!a}
+		local s=`tamper_get_status $av`
+		echo -e "tamper $av: $s"
 	done
 
 }
@@ -293,6 +309,14 @@ function perimetral_get_gpio4number {
 # $1 alias sensore
 #
 function perimetral_get_status {
+	if [[ "$(perimetral_alias_exists $1)" == "FALSE" ]]; then
+		local output="alias perimetral sensor not found: $1"
+		echo $output
+		log_write "ERROR $output"
+		message_write "warning" "$output"
+		exit 
+	fi
+
 	sensor_get_state "perimetral_$1"
 }
 
@@ -302,6 +326,14 @@ function perimetral_get_status {
 # $2 stato
 #
 function perimetral_set_status {
+	if [[ "$(perimetral_alias_exists $1)" == "FALSE" ]]; then
+		local output="alias perimetral sensor not found: $1"
+		echo $output
+		log_write "ERROR $output"
+		message_write "warning" "$output"
+		exit 
+	fi
+
 	sensor_set_state "perimetral_$1" $2
 }
 
@@ -313,6 +345,142 @@ function perimetral_list_alias {
                 for i in $(seq $PERIMETRAL_TOTAL)
                 do
                         local a=PERIMETRAL"$i"_ALIAS
+                        local al=${!a}
+                        echo $al
+                done
+
+}
+
+
+
+#
+# Passando un alias di un sensore tamper recupera il numero gpio associato 
+# $1 alias sensore
+#
+function tamper_get_gpio4alias {
+	for i in $(seq $PIR_TOTAL)
+	do
+		local g=TAMPER"$i"_GPIO
+		local a=TAMPER"$i"_ALIAS
+		local gv=${!g}
+		local av=${!a}
+		if [ "$av" == "$1" ]; then
+			return $gv
+		fi
+	done
+
+	log_write "ERROR tamper sensor alias not found: $1"
+	message_write "warning" "Tamper sensor alias not found"
+	exit 1
+}
+
+#
+# Recupera il numero di sensore tamper in base all'alias
+# $1 alias del sensore
+#
+function tamper_get_number4alias {
+	for i in $(seq $PIR_TOTAL)
+	do
+		local a=TAMPER"$i"_ALIAS
+		local av=${!a}
+		if [ "$av" == "$1" ]; then
+			return $i
+		fi
+	done
+
+	log_write "ERROR tamper sensor alias not found: $1"
+	message_write "warning" "Tamper sensor alias not found"
+	exit 1
+}
+
+#
+# Recupera l'alias di sensore tamper in base al numero
+# $1 numero del sensore
+#
+function tamper_get_alias4number {
+	local n=TAMPER"$1"_ALIAS
+	local a=${!n}
+	
+	if [ ! -z "$a" ]; then
+		echo "$a"
+		return
+	fi
+
+	log_write "ERROR tamper sensor number not found: $1"
+	message_write "warning" "Tamper sensor number not found"
+	exit 1
+}
+
+#
+# Verifica se l'alias di una sensore tamper esiste
+# $1 alias del sensore
+#
+function tamper_alias_exists {
+	local vret='FALSE'
+	for i in $(seq $PIR_TOTAL)
+	do
+		a=TAMPER"$i"_ALIAS
+		av=${!a}
+		if [ "$av" == "$1" ]; then
+			vret='TRUE'
+		fi
+	done
+
+	echo $vret
+}
+
+#
+# Recupera il numero di gpio associato in base al numero di sensore tamper 
+# $1 numero sensore
+#
+function tamper_get_gpio4number {
+#	echo "numero ev $1"
+	i=$1
+	g=TAMPER"$i"_GPIO
+	gv=${!g}
+#	echo "gv = $gv"
+	return $gv
+}
+
+#
+# Mostra lo stato di un sensore tamper
+# $1 alias sensore
+#
+function tamper_get_status {
+	if [[ "$(tamper_alias_exists $1)" == "FALSE" ]]; then
+		local output="alias tamper sensor not found: $1"
+		echo $output
+		log_write "ERROR $output"
+		message_write "warning" "$output"
+		exit 
+	fi
+	sensor_get_state "tamper_$1"
+}
+
+#
+# Scrive lo stato di un sensore tamper
+# $1 alias sensore
+# $2 stato
+#
+function tamper_set_status {
+	if [[ "$(tamper_alias_exists $1)" == "FALSE" ]]; then
+		local output="alias tamper sensor not found: $1"
+		echo $output
+		log_write "ERROR $output"
+		message_write "warning" "$output"
+		exit 
+	fi
+	sensor_set_state "tamper_$1" $2
+}
+
+#
+# Mostra lo stato dei sensori tamper
+#
+function tamper_list_alias {
+
+                for i in $(seq $TAMPER_TOTAL)
+                do
+                        local a=TAMPER"$i"_ALIAS
                         local al=${!a}
                         echo $al
                 done
@@ -415,6 +583,13 @@ function pir_get_gpio4number {
 # $1 alias sensore
 #
 function pir_get_status {
+	if [[ "$(pir_alias_exists $1)" == "FALSE" ]]; then
+		local output="alias pir sensor not found: $1"
+		echo $output
+		log_write "ERROR $output"
+		message_write "warning" "$output"
+		exit 
+	fi
 	sensor_get_state "pir_$1"
 }
 
@@ -424,6 +599,13 @@ function pir_get_status {
 # $2 stato
 #
 function pir_set_status {
+	if [[ "$(pir_alias_exists $1)" == "FALSE" ]]; then
+		local output="alias pir sensor not found: $1"
+		echo $output
+		log_write "ERROR $output"
+		message_write "warning" "$output"
+		exit 
+	fi
 	sensor_set_state "pir_$1" $2
 }
 
@@ -832,10 +1014,16 @@ function show_usage {
 	echo -e "\t$NAME_SCRIPT alarm_fired                                  fired alarm"
 	echo -e "\t$NAME_SCRIPT alarm_unfired                                unfired alarm"
 	echo -e "\n"
+	echo -e "\t$NAME_SCRIPT alarm_diable_sensor [perimetral|pir] [alias_name|all]"
+	echo -e "\n                                                          disables one or more sensors from the alarm"
+	echo -e "\t$NAME_SCRIPT alarm_enable_all_sensor                      enable all sensor from the alarm"
+	echo -e "\n"
 	echo -e "\t$NAME_SCRIPT perimetral_list_alias                        view list of perimetral sensor"
 	echo -e "\t$NAME_SCRIPT perimetral_status alias                      show perimetral sensor status"
 	echo -e "\t$NAME_SCRIPT pir_list_alias                               view list of pir sensor"
 	echo -e "\t$NAME_SCRIPT pir_status alias                             show pir sensor status"
+	echo -e "\t$NAME_SCRIPT tamper_list_alias                            view list of tamper sensor"
+	echo -e "\t$NAME_SCRIPT tamper_status alias                          show tamper sensor status"
 	echo -e "\t$NAME_SCRIPT sensor_status_all                            show all sensor status"
 	echo -e "\t$NAME_SCRIPT start_socket_server [force]                  start socket server"
 	echo -e "\t                                                           with 'force' parameter force close socket server if already open"
@@ -1094,6 +1282,7 @@ function start_guard()
 
 	local SENSORS_PERIMETRAL=`perimetral_list_alias`
 	local SENSORS_PIR=`pir_list_alias`
+	local SENSORS_TAMPER=`tamper_list_alias`
 
 	declare -A LAST_STATE
 
@@ -1110,10 +1299,16 @@ function start_guard()
 		LAST_STATE[pir_$a]=`pir_get_status $a`
 		#echo $a: ${LAST_STATE[perimetral_$a]}
 	done
+	for a in $SENSORS_TAMPER
+	do
+		LAST_STATE[tamper_$a]=`tamper_get_status $a`
+		#echo $a: ${LAST_STATE[perimetral_$a]}
+	done
 
 
 
-	# Fa scattare l'allarme se era già attivato prefentemente altrimenti ne imposta lo stato a zero
+
+	# Fa scattare l'allarme se era già attivato precedentemente altrimenti ne imposta lo stato a zero
 	local ALARM_ENABLED=`alarm_get_status`
 	local ALARM_FIRED=`alarm_fired_get_status`
 	if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
@@ -1220,6 +1415,50 @@ function start_guard()
 		done
 
 
+		#
+		# Controlla i sensori tamper
+		#
+		for a in $SENSORS_TAMPER
+		do
+			tamper_get_gpio4alias $a
+			local G=$?
+			local STATE=`$GPIO -g read $G`
+
+			# Sensore in allarme
+			if [ "$STATE" == "$TAMPER_GPIO_STATE" ]; then
+				# Passa da stato di non allarme ad allarme
+				if [ "${LAST_STATE[tamper_$a]}" -eq 0 ]; then
+					local TIME_OPEN=`date +%s`
+					tamper_set_status $a $TIME_OPEN
+					LAST_STATE[tamper_$a]=$TIME_OPEN
+					local OUTPUT="Tamper $a: ALERT $TIME_OPEN"
+					log_write "$OUTPUT"
+					echo "$OUTPUT"
+					trigger_event "tamper_detect" "$a"
+				fi
+
+				# Fa scattare l'allarme se non è ancora scattato (anche se l'allarme non è abilitato)
+				local ALARM_FIRED=`alarm_fired_get_status`
+				if [[ "$ALARM_FIRED" -eq 0 ]]; then
+					alarm_fired "Tamper $a"
+				fi
+
+			# Il sensore non è in allarme
+			else
+				# Passa da stato di allarme a non allarme
+				if [ "${LAST_STATE[tamper_$a]}" -gt 0 ]; then
+					local TIME_CLOSE=`date +%s`
+					tamper_set_status $a 0
+					LAST_STATE[tamper_$a]=0
+					local OUTPUT="Tamper $a: END ALERT $TIME_CLOSE"
+					log_write "$OUTPUT"
+					echo "$OUTPUT"
+				fi
+			fi
+
+			sleep $DELAY_LOOP_STATE
+		done
+
 
 	done
 
@@ -1286,6 +1525,14 @@ case "$1" in
 
 	pir_status)
 		pir_get_status $2
+		;;
+
+	tamper_list_alias)
+		tamper_list_alias
+		;;
+
+	tamper_status)
+		tamper_get_status $2
 		;;
 
 	sensor_status_all)

@@ -68,6 +68,7 @@ PERIMETRAL3_ALIAS="PT_PORTE" 		#
 PERIMETRAL3_GPIO=22			# Gpio 3 / Physical 15
 
 
+
 # Valore in ingresso dei gpio relativi ai sensori pir che indica lo stato di apertura
 PIR_GPIO_STATE=1
 
@@ -78,7 +79,7 @@ PIR_TOTAL=0
 PIR1_ALIAS="P1" 			#
 PIR1_GPIO=19				# Gpio 24 / Physical 35
 
-PIR2_ALIAS="PT_INGRESSO" 			#
+PIR2_ALIAS="PT_INGRESSO" 		#
 PIR2_GPIO=16				# Gpio 27 / Physical 36
 
 PIR3_ALIAS="PT_CUCINA"			#
@@ -88,7 +89,15 @@ PIR4_ALIAS="PT_BAGNO" 			#
 PIR4_GPIO=20				# Gpio 28 / Physical 38
 
 
+# Valore in ingresso dei gpio telativi ai sensori tamper che indica lo stato di manomissione
+TAMPER_GPIO_STATE=1
 
+# Numero totale di sensori tamper
+TAMPER_TOTAL=0
+
+# Definizione dei sensori temper
+TAMPER1_ALIAS="PERIMETRAL_P1"		#
+TAMPER1_GPIO=0				#
 
 
 # Valore gpio da scrivere per attivare spengere la sirena
