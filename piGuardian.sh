@@ -721,10 +721,60 @@ function alarm_unfired {
 
 }
 
+#
+# Disabilita dei sensori quando l'allarme è attivo
+# $1	tipologia sensore: perimetral|pir
+# $2	alias del sensore da disabilitare oppure 'all' per disabilitarli tutti
+#
+function alarm_disable_sensor {
+	local TYPE="$1"
+	local ALIAS="$2"
+	if [ "$TYPE" != 'perimetral' ] && [ "$TYPE" != 'pir' ]; then
+		local output="type "$TYPE" is wrong"
+		echo $output
+		log_write "ERROR $output"
+		message_write "warning" "$output"
+		exit 
+	fi
 
+	local ALIASIS
+	if [ "$ALIAS" == 'all' ] && [ "$TYPE" == 'perimetral' ]; then
+		ALIASIS="$(perimetral_list_alias)"
+	elif [ "$ALIAS" == 'all' ] && [ "$TYPE" == 'pir' ]; then
+		ALIASIS="$(pir_list_alias)"
+	else
+		if [ "$TYPE" == "perimetral" ] && [ "$(perimetral_alias_exists $ALIAS)" == "FALSE" ]; then
+			local output="alias perimetal sensor not found: $ALIAS"
+			echo $output
+			log_write "ERROR $output"
+			message_write "warning" "$output"
+			exit 
+		elif [ "$TYPE" == "pir" ] && [ "$(pir_alias_exists $ALIAS)" == "FALSE" ]; then
+			local output="alias pir sensor not found: $ALIAS"
+			echo $output
+			log_write "ERROR $output"
+			message_write "warning" "$output"
+			exit 
+		fi
+		ALIASIS="$ALIAS"
+	fi
 
+	for a in $ALIASIS
+	do
+		echo "${TYPE}_$a" >> "$FILE_ALARM_DISABLE_SENSOR"
+	done
 
+}
 
+#
+# Riabilita tutti i sensori quando l'allarme è attivo eliminando il file contentente i sensori diabbilitati con alarm_disable_sensor
+#
+
+function alarm_enable_all_sensor {
+
+	rm -f "$FILE_ALARM_DISABLE_SENSOR" 2> /dev/null
+
+}
 
 #
 # Elimina una tipoliga di schedulazione dal crontab dell'utente
@@ -1007,17 +1057,17 @@ function show_usage {
 	echo -e "\t                                                           with 'fg' parameter run monitoring in foreground mode"
 	echo -e "\t                                                           with 'force' parameter force close guard service if already open"
 	echo -e "\t$NAME_SCRIPT stop_guard                                   stop guard daemon"
-	echo -e "\n"
+	echo -e "\t"
 	echo -e "\t$NAME_SCRIPT alarm_enable                                 enable alarm"
 	echo -e "\t$NAME_SCRIPT alarm_disable                                disable alarm"
 	echo -e "\t$NAME_SCRIPT alarm_get_status                             show status alarm"
 	echo -e "\t$NAME_SCRIPT alarm_fired                                  fired alarm"
 	echo -e "\t$NAME_SCRIPT alarm_unfired                                unfired alarm"
-	echo -e "\n"
-	echo -e "\t$NAME_SCRIPT alarm_diable_sensor [perimetral|pir] [alias_name|all]"
-	echo -e "\n                                                          disables one or more sensors from the alarm"
+	echo -e "\t"
+	echo -e "\t$NAME_SCRIPT alarm_disable_sensor [perimetral|pir] [alias_name|all]"
+	echo -e "\t                                                           disables one or more sensors from the alarm"
 	echo -e "\t$NAME_SCRIPT alarm_enable_all_sensor                      enable all sensor from the alarm"
-	echo -e "\n"
+	echo -e ""
 	echo -e "\t$NAME_SCRIPT perimetral_list_alias                        view list of perimetral sensor"
 	echo -e "\t$NAME_SCRIPT perimetral_status alias                      show perimetral sensor status"
 	echo -e "\t$NAME_SCRIPT pir_list_alias                               view list of pir sensor"
@@ -1028,12 +1078,12 @@ function show_usage {
 	echo -e "\t$NAME_SCRIPT start_socket_server [force]                  start socket server"
 	echo -e "\t                                                           with 'force' parameter force close socket server if already open"
 	echo -e "\t$NAME_SCRIPT stop_socket_server                           stop socket server"
-	echo -e "\n"
+	echo -e "\t"
 	echo -e "\t$NAME_SCRIPT set_cron_init                                set crontab for initialize control unit"
 	echo -e "\t$NAME_SCRIPT del_cron_init                                remove crontab for initialize control unit"
 	echo -e "\t$NAME_SCRIPT set_cron_start_socket_server                 set crontab for start socket server"
 	echo -e "\t$NAME_SCRIPT del_cron_start_socket_server                 remove crontab for start socket server"
-	echo -e "\n"
+	echo -e "\t"
 	echo -e "\t$NAME_SCRIPT debug1 [parameter]|[parameter]|..]           Run debug code 1"
 	echo -e "\t$NAME_SCRIPT debug2 [parameter]|[parameter]|..]           Run debug code 2"
 }
@@ -1317,10 +1367,20 @@ function start_guard()
 		sensor_set_state "alarm_fired" 0
 	fi
 
+
+
+	local I=0
+
 	#
 	# Inizio ciclo di lettura dei sensori
 	#
 	while [ 1 ]; do
+
+		if [ "$I" -eq "100" ]; then
+			log_write "debug"
+			I=0
+		fi
+		I=$((I+1))
 
 		#
 		# Controlla i sensori perimetrali
@@ -1376,6 +1436,7 @@ function start_guard()
 		do
 			pir_get_gpio4alias $a
 			local G=$?
+#echo $a - $?
 			local STATE=`$GPIO -g read $G`
 
 			# Sensore in allarme
@@ -1502,6 +1563,8 @@ else
 	exit 1
 fi
 
+FILE_ALARM_DISABLE_SENSOR="$STATUS_DIR/alarm_disable_sensor"
+
 LAST_INFO_FILE="$STATUS_DIR/last_info"
 LAST_WARNING_FILE="$STATUS_DIR/last_worning"
 LAST_SUCCESS_FILE="$STATUS_DIR/last_success"
@@ -1592,6 +1655,13 @@ case "$1" in
 		alarm_unfired
 		;;
 
+	alarm_disable_sensor)
+		alarm_disable_sensor "$2" "$3"
+		;; 
+
+	alarm_enable_all_sensor)
+		alarm_enable_all_sensor
+		;;
 
         start_socket_server)
                 if [ -f "$TCPSERVER_PID_FILE" ]; then
