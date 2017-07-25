@@ -1361,7 +1361,7 @@ function start_guard()
 	# Fa scattare l'allarme se era già attivato precedentemente altrimenti ne imposta lo stato a zero
 	local ALARM_ENABLED=`alarm_get_status`
 	local ALARM_FIRED=`alarm_fired_get_status`
-	if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
+	if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -gt 0 ]]; then
 		alarm_fired "reactive"
 	else
 		sensor_set_state "alarm_fired" 0
@@ -1408,7 +1408,14 @@ function start_guard()
 				local ALARM_ENABLED=`alarm_get_status`
 				local ALARM_FIRED=`alarm_fired_get_status`
 				if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
-					alarm_fired "Perimetral $a"
+					local RE="^perimetral_$a$"
+					if ! $GREP "$RE" "$FILE_ALARM_DISABLE_SENSOR" > /dev/null; then
+						alarm_fired "Perimetral $a"
+					else
+						local OUTPUT="Perimetral $a: sensor disabled, not fired alarm $TIME_OPEN"
+						log_write "$OUTPUT"
+						echo "$OUTPUT"
+					fi
 				fi
 
 			# Il sensore non è in allarme
@@ -1456,7 +1463,14 @@ function start_guard()
 				local ALARM_ENABLED=`alarm_get_status`
 				local ALARM_FIRED=`alarm_fired_get_status`
 				if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
-					alarm_fired "Pir $a"
+					local RE="^pir_$a$"
+					if ! $GREP "$RE" "$FILE_ALARM_DISABLE_SENSOR" > /dev/null; then
+						alarm_fired "Pir $a"
+					else
+						local OUTPUT="Pir $a: sensor disabled, not fired alarm $TIME_OPEN"
+						log_write "$OUTPUT"
+						echo "$OUTPUT"
+					fi
 				fi
 
 			# Il sensore non è in allarme
