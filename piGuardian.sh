@@ -635,11 +635,45 @@ function alarm_get_status {
 # Abilita l'allarme
 #
 function alarm_enable {
-	local TIME_ALARM=`date +%s`
+	local TIME_ALARM=-`date +%s`
+	# Imposta alarm_enabled con stato negativo per indicare che è stato richiesto l'attivazione dell'allarme
+	# l'allarme viene abilitato dalla funzione start_guard avviata in background quando alarm_enabled viene trovato 
+	# con stato negativo e tutti i sensori non sono in allarme
 	sensor_set_state "alarm_enabled" $TIME_ALARM
-	log_write "Alarm enabled $TIME_ALARM"
 
-	trigger_event "alarm_enable" ""
+	local i=0
+	local time_sleep=10
+	local alarm_state=0
+
+	# Ettende un tempo minimo per verificare se l'allarme sia stato attivato dalla funzione start_guard che gira in background
+	while [ $i -lt $time_sleep ]
+	do
+		alarm_state=`alarm_get_status`
+		if [ $alarm_state -gt 0 ]; then
+			break
+		fi
+		i=$[$i+1]
+		sleep 1
+	done	
+
+	alarm_state=`alarm_get_status`
+	local output=""
+	if [ $alarm_state -lt 0 ]; then
+		sensor_set_state "alarm_enabled" 0
+		output="Alarm not activated: some sensors are in alarm" 
+		log_write "$output"
+		message_write "warning" "$output"
+	elif [ $alarm_state -gt 0 ]; then
+		output="Alarm activated" 
+	else
+		output="Alarm not activated" 
+	fi
+	echo "$output"
+
+#	sensor_set_state "alarm_enabled" $TIME_ALARM
+#	log_write "Alarm enabled $TIME_ALARM"
+
+#	trigger_event "alarm_enable" ""
 }
 
 #
@@ -1368,7 +1402,6 @@ function start_guard()
 	fi
 
 
-
 	local I=0
 
 	#
@@ -1376,8 +1409,11 @@ function start_guard()
 	#
 	while [ 1 ]; do
 
+		local TOTAL_SENSOR_IN_ALARM=0
+		local ALARM_ENABLED=`alarm_get_status`
+
 		if [ "$I" -eq "100" ]; then
-			log_write "debug"
+			#log_write "debug"
 			I=0
 		fi
 		I=$((I+1))
@@ -1405,17 +1441,44 @@ function start_guard()
 				fi
 
 				# Fa scattare l'allarme se è abiltiato e se non è ancora scattato
-				local ALARM_ENABLED=`alarm_get_status`
+				#local ALARM_ENABLED=`alarm_get_status`
 				local ALARM_FIRED=`alarm_fired_get_status`
-				if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
+#log_write "*****************"
+#if [[ "$ALARM_ENABLED" -lt 0 || ( "$ALARM_ENABLED" -gt 0 && "$ALARM_FIRED" -eq 0 ) ]]; then
+#if [ "$ALARM_ENABLED" -lt 0 ] || [[ "$ALARM_ENABLED" -gt 0 && "$ALARM_FIRED" -eq 0 ]]; then
+#	log_write "*X* ALARM_ENABLED=$ALARM_ENABLED - ALARM_FIRED=$ALARM_FIRED"
+#fi
+
+				if [[ "$ALARM_ENABLED" -lt 0 || ( "$ALARM_ENABLED" -gt 0 && "$ALARM_FIRED" -eq 0 ) ]]; then
 					local RE="^perimetral_$a$"
-					if ! $GREP "$RE" "$FILE_ALARM_DISABLE_SENSOR" > /dev/null; then
-						alarm_fired "Perimetral $a"
-					else
-						local OUTPUT="Perimetral $a: sensor disabled, not fired alarm $TIME_OPEN"
-						log_write "$OUTPUT"
-						echo "$OUTPUT"
+					local R=$($GREP "$RE" "$FILE_ALARM_DISABLE_SENSOR")
+#	log_write "*** R=$R"
+#if [ -z "$R" ] ; then
+#	log_write "*0* R=vuoto"
+#fi
+					
+					if [ -z "$R" ]  && [ "$ALARM_ENABLED" -lt 0 ]; then
+						TOTAL_SENSOR_IN_ALARM=$((TOTAL_SENSOR_IN_ALARM+1))
+#log_write "*1* $ALARM_ENABLED - TOTAL_SENSOR_IN_ALARM=$TOTAL_SENSOR_IN_ALARM"
+					elif [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
+						if [ -z "$R" ]; then
+							alarm_fired "Perimetral $a"
+						else
+							local OUTPUT="Perimetral $a: sensor disabled, not fired alarm $TIME_OPEN"
+							log_write "$OUTPUT"
+							echo "$OUTPUT"
+						fi
 					fi
+
+					#local RE="^perimetral_$a$"
+					#if ! $GREP "$RE" "$FILE_ALARM_DISABLE_SENSOR" > /dev/null; then
+					#	alarm_fired "Perimetral $a"
+					#else
+					#	local OUTPUT="Perimetral $a: sensor disabled, not fired alarm $TIME_OPEN"
+					#	log_write "$OUTPUT"
+					#	echo "$OUTPUT"
+					#fi
+
 				fi
 
 			# Il sensore non è in allarme
@@ -1460,18 +1523,35 @@ function start_guard()
 				fi
 
 				# Fa scattare l'allarme se è abiltiato e se non è ancora scattato
-				local ALARM_ENABLED=`alarm_get_status`
+				#local ALARM_ENABLED=`alarm_get_status`
 				local ALARM_FIRED=`alarm_fired_get_status`
-				if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
+				if [[ "$ALARM_ENABLED" -lt 0 || ( "$ALARM_ENABLED" -gt 0 && "$ALARM_FIRED" -eq 0 ) ]]; then
 					local RE="^pir_$a$"
-					if ! $GREP "$RE" "$FILE_ALARM_DISABLE_SENSOR" > /dev/null; then
-						alarm_fired "Pir $a"
-					else
-						local OUTPUT="Pir $a: sensor disabled, not fired alarm $TIME_OPEN"
-						log_write "$OUTPUT"
-						echo "$OUTPUT"
+					local R=$($GREP "$RE" "$FILE_ALARM_DISABLE_SENSOR")
+					
+					if [ -z "$R" ]  && [ "$ALARM_ENABLED" -lt 0 ]; then
+						TOTAL_SENSOR_IN_ALARM=$((TOTAL_SENSOR_IN_ALARM+1))
+					elif [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
+						if [ -z "$R" ]; then
+							alarm_fired "Pir $a"
+						else
+							local OUTPUT="Pir $a: sensor disabled, not fired alarm $TIME_OPEN"
+							log_write "$OUTPUT"
+							echo "$OUTPUT"
+						fi
 					fi
 				fi
+
+				#if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
+				#	local RE="^pir_$a$"
+				#	if ! $GREP "$RE" "$FILE_ALARM_DISABLE_SENSOR" > /dev/null; then
+				#		alarm_fired "Pir $a"
+				#	else
+				#		local OUTPUT="Pir $a: sensor disabled, not fired alarm $TIME_OPEN"
+				#		log_write "$OUTPUT"
+				#		echo "$OUTPUT"
+				#	fi
+				#fi
 
 			# Il sensore non è in allarme
 			else
@@ -1534,6 +1614,19 @@ function start_guard()
 			sleep $DELAY_LOOP_STATE
 		done
 
+		# Se lo stato di alarm_enabled è negativo vuole dire che è stata richiesto l'attivazione dell'allarme,
+		# se nessun sensore è in allarme, lo abilita impostando alarm_enabled con valore positivo.
+		#local ALARM_ENABLED=`alarm_get_status`
+#log_write "ALARM_ENABLED=$ALARM_ENABLED - TOTAL_SENSOR_IN_ALARM=$TOTAL_SENSOR_IN_ALARM"
+		if [[ "$ALARM_ENABLED" -lt 0 ]] && [[ "$TOTAL_SENSOR_IN_ALARM" -eq 0 ]]; then
+#log_write "ALARM_ENABLED=$ALARM_ENABLED - TOTAL_SENSOR_IN_ALARM=$TOTAL_SENSOR_IN_ALARM"
+			local TIME_ALARM=`date +%s`
+			sensor_set_state "alarm_enabled" $TIME_ALARM
+			trigger_event "alarm_enable" ""
+			log_write "Alarm enabled $TIME_ALARM"
+			message_write "success" "Alarm enabled"
+			sleep 1
+		fi
 
 	done
 
