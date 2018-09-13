@@ -50,6 +50,10 @@ function initialize {
 		alarm_unfired > /dev/null
 	fi
 
+	if [ ! -f "$FILE_ALARM_DISABLE_SENSOR" ]; then
+		touch "$FILE_ALARM_DISABLE_SENSOR"
+	fi
+
 	trigger_event "init" ""
 	log_write "End initialize"
 
@@ -797,6 +801,7 @@ function show_usage {
 	echo -e "\t$NAME_SCRIPT stop_socket_server                           stop socket server"
 	echo -e "\t"
 	echo -e "\t$NAME_SCRIPT json_status [get_cron]                       show status in json format"
+	echo -e "\t$NAME_SCRIPT mqtt_status                                  send status in json format to mqtt broker"
 	echo -e "\t"
 	echo -e "\t$NAME_SCRIPT set_cron_init                                set crontab for initialize control unit"
 	echo -e "\t$NAME_SCRIPT del_cron_init                                remove crontab for initialize control unit"
@@ -891,7 +896,7 @@ function json_status {
 
 	local json_pir_disabled=""
 	local json_perimetral_disabled=""
-	for i in $(cat "$FILE_ALARM_DISABLE_SENSOR")
+	for i in $(cat "$FILE_ALARM_DISABLE_SENSOR" 2> /dev/null)
 	do
 		local name_sensor_disabled=""
 		if [[ "$i" == perimetral_* ]]; then
@@ -969,11 +974,18 @@ function json_status {
 
 }
 
-
-
 json_error()
 {
 	echo "{\"error\":{\"code\":$1,\"description\":\"$2\"}}"
+}
+
+#
+# Invia al broker mqtt il json contentente lo stato del sistema
+#
+function mqtt_status {
+
+	local js=$(json_status)
+	$MOSQUITTO_PUB -h $MQTT_HOST -p $MQTT_PORT -u $MQTT_USER -P $MQTT_PWD -i $MQTT_CLIENT_ID -r -t "$MQTT_TOPIC" -m "$js"
 }
 
 list_descendants ()
@@ -1177,6 +1189,9 @@ case "$1" in
 
 	json_status)
 		json_status $2 $3 $4 $5 $6
+		;;
+	mqtt_status)
+		mqtt_status
 		;;
 
 	debug1)

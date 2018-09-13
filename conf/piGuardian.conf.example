@@ -47,6 +47,12 @@ SED="/bin/sed"
 # Percorso readlink
 READLINK="/bin/readlink"
 
+# Percorso mosquito_pub
+# Installare con apt install mosquitto-clients
+MOSQUITTO_PUB="/usr/bin/mosquitto_pub"
+
+
+
 # Tempo di attesa tra una lettura e l'altra dei sensori
 DELAY_LOOP_STATE=0.05
 
@@ -112,8 +118,15 @@ SIREN1_ALIAS="SIRENA_INTERNA"		#
 SIREN1_GPIO="18"			# Gpio 1 / Physical 12
 
 
-
 # Indirizzo ip e porta di ascolto del socket server
-#TCPSERVER_IP="127.0.0.1"
-#TCPSERVER_PORT="8084"
+TCPSERVER_IP="127.0.0.1"
+TCPSERVER_PORT="8084"
+
+# Parametri connessione al broker mqtt
+MQTT_HOST=you_host_mqtt
+MQTT_PORT=1883
+MQTT_USER=your_user_mqtt
+MQTT_PWD=yout_password_mqtt
+MQTT_TOPIC=""
+MQTT_CLIENT_ID=piGuardian
 

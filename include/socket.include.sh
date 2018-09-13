@@ -26,6 +26,8 @@ function socket_server_command {
 
 	RUN_FROM_TCPSERVER=1
 
+	# @todo implementare credenziali socket server
+
 	local line=""
 	read line
 	line=$(echo "$line " | $TR -d '[\r\n]')
