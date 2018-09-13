@@ -1,0 +1,1 @@
+../scripts/rpinotify_custom.sh

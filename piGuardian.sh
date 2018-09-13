@@ -62,69 +62,6 @@ function reset_messages {
 }
 
 #
-# Commuta un elettrovalvola nello stato aperto
-# $1 alias elettrovalvola
-# $2 se specificata la string "force" apre l'elettrovalvola anche se c'é pioggia
-#
-function ev_open {
-	
-	cron_del open_in $1 > /dev/null 2>&1
-
-	if [ ! "$2" = "force" ]; then
-		if [[ "$NOT_IRRIGATE_IF_RAIN_ONLINE" -gt 0 && -f $STATUS_DIR/last_rain_online ]]; then
-			local last_rain=`cat $STATUS_DIR/last_rain_online`
-			local now=`date +%s`
-			local dif=0
-			let "dif = now - last_rain"
-			if [ $dif -lt $NOT_IRRIGATE_IF_RAIN_ONLINE ]; then
-				log_write "Solenoid '$1' not open for rain (online check)"
-				message_write "warning" "Solenoid not open for rain"
-				return
-			fi
-		fi
-
-		check_rain_sensor
-		if [[ "$NOT_IRRIGATE_IF_RAIN_SENSOR" -gt 0 && -f $STATUS_DIR/last_rain_sensor ]]; then
-			local last_rain=`cat $STATUS_DIR/last_rain_sensor`
-			local now=`date +%s`
-			local dif=0
-			let "dif = now - last_rain"
-			if [ $dif -lt $NOT_IRRIGATE_IF_RAIN_SENSOR ]; then
-				log_write "Solenoid '$1' not open for rain (sensor check)"
-				message_write "warning" "Solenoid not open for rain"
-				return
-			fi
-		fi
-	fi
-
-	local state=1
-	if [ "$2" = "force" ]; then
-		state=2
-	fi
-
-	# Dall'alias dell'elettrovalvola recupero il numero e dal numero recupero gpio da usare
-	ev_alias2number $1
-	EVNUM=$?
-	ev_number2gpio $EVNUM
-	g=$?
-
-	# Gestisce l'apertura dell'elettrovalvola in base alla tipologia (monostabile / bistabile) 
-	if [ "$EV_MONOSTABLE" == "1" ]; then
-		$GPIO -g write $g $RELE_GPIO_CLOSE
-	else
-		supply_positive
-		$GPIO -g write $g $RELE_GPIO_CLOSE
-		sleep 1
-		$GPIO -g write $g $RELE_GPIO_OPEN
-	fi
-
-	ev_set_state $EVNUM $state
-
-	log_write "Solenoid '$1' open"
-	message_write "success" "Solenoid open"
-}
-
-#
 # Scrive un messaggio nel file di log
 # $1 log da scrivere
 #
@@ -663,10 +600,14 @@ function alarm_enable {
 		output="Alarm not activated: some sensors are in alarm" 
 		log_write "$output"
 		message_write "warning" "$output"
+		trigger_event "alarm_enable_fail" "$output"
 	elif [ $alarm_state -gt 0 ]; then
 		output="Alarm activated" 
 	else
 		output="Alarm not activated" 
+		log_write "$output"
+		message_write "warning" "$output"
+		trigger_event "alarm_enable_fail" "$output"
 	fi
 	echo "$output"
 
@@ -798,6 +739,12 @@ function alarm_disable_sensor {
 		echo "${TYPE}_$a" >> "$FILE_ALARM_DISABLE_SENSOR"
 	done
 
+	local output="Sensor successfully disabled: $TYPE $2"
+	echo $output
+	log_write " $output"
+	message_write "success" "Sensor successfully disabled"
+
+	trigger_event "alarm_disable_sensor" "$TYPE $2"
 }
 
 #
@@ -808,279 +755,14 @@ function alarm_enable_all_sensor {
 
 	rm -f "$FILE_ALARM_DISABLE_SENSOR" 2> /dev/null
 
-}
+	local output="All sensor successfully enabled"
+	echo $output
+	log_write " $output"
+	message_write "success" "$output"
 
-#
-# Elimina una tipoliga di schedulazione dal crontab dell'utente
-# $1	tipologia del crontab
-# $2	argomento della tipologia
-#
-function cron_del {
-
-	local CRON_TYPE=$1
-	local CRON_ARG=$2
-
-	if [ -z "$CRON_TYPE" ]; then
-		echo "Cron type is empty" >&2
-		log_write "Cron type is empty"
-		return 1
-	fi
-
-	$CRONTAB -l > "$TMP_CRON_FILE"
-	local START=`$GREP -n "# START cron $CRON_TYPE $CRON_ARG" "$TMP_CRON_FILE"| $CUT -d : -f 1`
-	local END=`$GREP -n "# END cron $CRON_TYPE $CRON_ARG" "$TMP_CRON_FILE"| $CUT -d : -f 1`
-	local re='^[0-9]+$'
-
-	if ! [[ "$START" =~ $re ]] && ! [[ "$END" =~ $re ]] ; then
-		echo "$1 $2 cron is not present" >&2
-		return
-	fi
-	if ! [[ $START =~ $re ]] ; then
-  		echo "Cron start don't find" >&2
-  		log_write "Cron start don't find"
-		return 1
-	fi
-	if ! [[ $END =~ $re ]] ; then
-  		echo "Cron end cron don't find" >&2
-  		log_write "Cron end cron don't find"
-		return 1
-	fi
-	if [ "$START" -gt "$END" ]; then
-  		echo "Wrong position for start and end in cron" >&2
-  		log_write "Wrong position for start and end in cron"
-		return 1
-	fi
-
-
-	$SED "$START,${END}d" "$TMP_CRON_FILE" | $SED '$!N; /^\(.*\)\n\1$/!P; D' | $CRONTAB -
-	#$CRONTAB "$TMP_CRON_FILE"
-	rm "$TMP_CRON_FILE"
+	trigger_event "alarm_enable_all_sensor" "$TYPE $2"
 
 }
-
-#
-# Aggiunge una schedulazione nel crontab dell'utente
-# $1	tipologia del crontab
-# $2	minuto
-# $3	ora
-# $4	giorno del mese
-# $5	mese
-# $6	giorno della settimana
-# $7	argomento della tipologia
-# $8	secondo argomento della tipologia
-#
-function cron_add {
-
-	local CRON_TYPE=$1
-	local CRON_M=$2
-	local CRON_H=$3
-	local CRON_DOM=$4
-	local CRON_MON=$5
-	local CRON_DOW=$6
-	local CRON_ARG=$7
-	local CRON_ARG2=$8
-	local CRON_COMMAND=""
-	local PATH_SCRIPT=`$READLINK -f "$DIR_SCRIPT/$NAME_SCRIPT"`
-	local TMP_CRON_FILE2="$TMP_CRON_FILE-2"
-
-	if [ -z "$CRON_TYPE" ]; then
-		echo "Cron type is empty" >&2
-		log_write "Cron type is empty"
-		return 1
-	fi
-
-	$CRONTAB -l > "$TMP_CRON_FILE"
-	local START=`$GREP -n "# START cron $CRON_TYPE $CRON_ARG" "$TMP_CRON_FILE"| $CUT -d : -f 1`
-	local END=`$GREP -n "# END cron $CRON_TYPE $CRON_ARG" "$TMP_CRON_FILE"| $CUT -d : -f 1`
-	local re='^[0-9]+$'
-
-	local NEW_CRON=0
-	local PREVIUS_CONTENT=""
-
-	if ! [[ $START =~ $re ]] && ! [[ $END =~ $re ]] ; then
-  		NEW_CRON=1
-	else
-		if ! [[ $START =~ $re ]] ; then
-  			echo "Cron start don't find" >&2
-  			log_write "Cron start don't find"
-			return 1
-		fi
-		if ! [[ $END =~ $re ]] ; then
-  			echo "Cron end cron don't find" >&2
-  			log_write "Cron end cron don't find"
-			return 1
-		fi
-		START=$(($START + 1))
-		END=$(($END - 1))
-
-		if [ "$START" -gt "$END" ]; then
-  			echo "Wrong position for start and end in cron" >&2
-  			log_write "Wrong position for start and end in cron"
-			return 1
-		fi
-		
-		PREVIOUS_CONTENT=`$SED -n "$START,${END}p" "$TMP_CRON_FILE"`
-
-	fi
-
-	case "$CRON_TYPE" in
-
-		init)
-			CRON_M="@reboot"
-			CRON_H=""
-			CRON_DOM=""
-			CRON_MON=""
-			CRON_DOW=""
-			CRON_COMMAND="$PATH_SCRIPT init"
-			;;
-
-		start_socket_server)
-			CRON_M="@reboot"
-			CRON_H=""
-			CRON_DOM=""
-			CRON_MON=""
-			CRON_DOW=""
-			CRON_COMMAND="$PATH_SCRIPT start_socket_server force"
-			;;
-
-		*)
-			echo "Wrong cron type: $CRON_TYPE"
-			log_write "Wrong cron type: $CRON_TYPE"
-			;;
-
-	esac
-
-	if [ "$NEW_CRON" -eq "0" ]; then
-		START=$(($START - 1))
-		END=$(($END + 1))
-		$SED "$START,${END}d" "$TMP_CRON_FILE" > "$TMP_CRON_FILE2"
-	else
-		cat "$TMP_CRON_FILE" > "$TMP_CRON_FILE2"
-	fi
-
-	if [ "$NEW_CRON" -eq "1" ]; then
-		echo "" >> "$TMP_CRON_FILE2"
-	fi
-	echo "# START cron $CRON_TYPE $CRON_ARG" >> "$TMP_CRON_FILE2"
-	if [ "$NEW_CRON" -eq "0" ]; then
-		echo "$PREVIOUS_CONTENT" >> "$TMP_CRON_FILE2"
-	fi
-	echo "$CRON_M $CRON_H $CRON_DOM $CRON_MON $CRON_DOW $CRON_COMMAND" >> "$TMP_CRON_FILE2"
-	echo "# END cron $CRON_TYPE $CRON_ARG" >> "$TMP_CRON_FILE2"
-
-	$CRONTAB "$TMP_CRON_FILE2"
-	rm "$TMP_CRON_FILE" "$TMP_CRON_FILE2"
-
-}
-
-#
-# Legge una tipoliga di schedulazione dal crontab dell'utente
-# $1	tipologia del crontab
-# $2	argomento della tipologia
-#
-function cron_get {
-
-	local CRON_TYPE=$1
-	local CRON_ARG=$2
-
-	if [ -z "$CRON_TYPE" ]; then
-		echo "Cron type is empty" >&2
-		log_write "Cron type is empty"
-		return 1
-	fi
-
-	$CRONTAB -l > "$TMP_CRON_FILE"
-	local START=`$GREP -n "# START cron $CRON_TYPE $CRON_ARG" "$TMP_CRON_FILE"| $CUT -d : -f 1`
-	local END=`$GREP -n "# END cron $CRON_TYPE $CRON_ARG" "$TMP_CRON_FILE"| $CUT -d : -f 1`
-	local re='^[0-9]+$'
-
-	local PREVIUS_CONTENT=""
-
-	if ! [[ $START =~ $re ]] && ! [[ $END =~ $re ]] ; then
-  		PREVIUS_CONTENT=""
-	else
-		if ! [[ $START =~ $re ]] ; then
-  			echo "Cron start don't find" >&2
-  			log_write "Cron start don't find"
-			return 1
-		fi
-		if ! [[ $END =~ $re ]] ; then
-  			echo "Cron end cron don't find" >&2
-  			log_write "Cron end cron don't find"
-			return 1
-		fi
-		START=$(($START + 1))
-		END=$(($END - 1))
-
-		if [ "$START" -gt "$END" ]; then
-  			echo "Wrong position for start and end in cron" >&2
-  			log_write "Wrong position for start and end in cron"
-			return 1
-		fi
-		
-		PREVIOUS_CONTENT=`$SED -n "$START,${END}p" "$TMP_CRON_FILE"`
-	fi
-
-	echo "$PREVIOUS_CONTENT"
-
-}
-
-function set_cron_init {
-
-	cron_del "init" 2> /dev/null
-	cron_add "init"
-
-}
-
-function del_cron_init {
-
-	cron_del "init"
-
-}
-
-function set_cron_start_socket_server {
-
-	cron_del "start_socket_server" 2> /dev/null
-	cron_add "start_socket_server"
-
-}
-
-function del_cron_start_socket_server {
-
-	cron_del "start_socket_server"
-}
-
-function set_cron_check_rain_sensor {
-
-	cron_del "check_rain_sensor" 2> /dev/null
-	cron_add "check_rain_sensor"
-}
-
-#
-# Triggered an event and executge associated scripts
-# $1 event
-# $2 cause
-#
-
-function trigger_event {
-
-	local EVENT="$1"
-	local CAUSE="$2"
-	local current_event_dir="$EVENT_DIR/$EVENT"
-
-	if [ -d "$current_event_dir" ]; then
-		local FILES="$current_event_dir/*"
-		for f in $FILES
-		do
-			if [ -x "$f" ]; then
-				$f "$EVENT" "$CAUSE" `date +%s`  &> /dev/null &
-			fi
-		done
-
-	fi
-
-}
-
 
 function show_usage {
 	echo -e "piGuardian v. $VERSION.$SUB_VERSION.$RELEASE_VERSION"
@@ -1109,9 +791,12 @@ function show_usage {
 	echo -e "\t$NAME_SCRIPT tamper_list_alias                            view list of tamper sensor"
 	echo -e "\t$NAME_SCRIPT tamper_status alias                          show tamper sensor status"
 	echo -e "\t$NAME_SCRIPT sensor_status_all                            show all sensor status"
+	echo -e "\t"
 	echo -e "\t$NAME_SCRIPT start_socket_server [force]                  start socket server"
 	echo -e "\t                                                           with 'force' parameter force close socket server if already open"
 	echo -e "\t$NAME_SCRIPT stop_socket_server                           stop socket server"
+	echo -e "\t"
+	echo -e "\t$NAME_SCRIPT json_status [get_cron]                       show status in json format"
 	echo -e "\t"
 	echo -e "\t$NAME_SCRIPT set_cron_init                                set crontab for initialize control unit"
 	echo -e "\t$NAME_SCRIPT del_cron_init                                remove crontab for initialize control unit"
@@ -1122,222 +807,169 @@ function show_usage {
 	echo -e "\t$NAME_SCRIPT debug2 [parameter]|[parameter]|..]           Run debug code 2"
 }
 
-function start_guard_daemon {
 
-	rm -f "$GUARD_PID_FILE"
-	echo $GUARD_PID_SCRIPT > "$GUARD_PID_FILE"
-	start_guard 
+#
+# Stampa un json contanente lo status della centralina
+# $1 .. $6 parametri opzionali
+# 	- get_cron: aggiunge i dati relativi ai crontab delle scehdulazioni di apertura/chisura delle elettrovalvole
+#
+function json_status {
+	local json=""
+	local json_version="\"version\":{\"ver\":$VERSION,\"sub\":$SUB_VERSION,\"rel\":$RELEASE_VERSION}"
+	local json_error="\"error\":{\"code\":0,\"description\":\"\"}"
+	local json_perimetral=""
+	local json_pir=""
+	local json_tamper=""
+	local json_alarm=""
+	local json_sensor_disabled=""
+	local last_info=""
+	local last_warning=""
+	local last_success=""
+	local with_get_cron="0"
+
+	local vret=""
+	for i in $1 $2 $3 $4 $5 $6
+        do
+		if [ $i = "get_cron" ]; then
+			with_get_cron="1"
+		fi
+	done
+
+	local a
+	local av
+
+	json=""
+	for i in $(seq $PERIMETRAL_TOTAL)
+	do
+		a=PERIMETRAL"$i"_ALIAS
+		av=${!a}
+		local s=`perimetral_get_status $av`
+		local al=0
+		if [ $s -gt 0 ]; then
+			al=1
+		fi
+		if [ -n "$json" ]; then
+			json="$json,"
+		fi
+		json="$json\"$av\":{\"name\":\"$av\",\"state\":$s,\"alarm\":$al}"
+	done
+	json_perimetral="\"perimetral\":{$json}"
+
+	json=""
+	for i in $(seq $PIR_TOTAL)
+	do
+		a=PIR"$i"_ALIAS
+		av=${!a}
+		local s=`pir_get_status $av`
+		local al=0
+		if [ $s -gt 0 ]; then
+			al=1
+		fi
+		if [ -n "$json" ]; then
+			json="$json,"
+		fi
+		json="$json\"$av\":{\"name\":\"$av\",\"state\":$s,\"alarm\":$al}"
+	done
+	json_pir="\"pir\":{$json}"
+
+	json=""
+	for i in $(seq $TAMPER_TOTAL)
+	do
+		a=TAMPER"$i"_ALIAS
+		av=${!a}
+		local s=`tamper_get_status $av`
+		local al=0
+		if [ $s -gt 0 ]; then
+			al=1
+		fi
+		if [ -n "$json" ]; then
+			json="$json,"
+		fi
+		json="$json\"$av\":{\"name\":\"$av\",\"state\":$s,\"alarm\":$al}"
+	done
+	json_tamper="\"tamper\":{$json}"
+
+	local json_pir_disabled=""
+	local json_perimetral_disabled=""
+	for i in $(cat "$FILE_ALARM_DISABLE_SENSOR")
+	do
+		local name_sensor_disabled=""
+		if [[ "$i" == perimetral_* ]]; then
+			name_sensor_disabled="${i#perimetral_}"
+			if [ -n "$json_perimetral_disabled" ]; then
+				json_perimetral_disabled="$json_perimetral_disabled,"
+			fi
+			json_perimetral_disabled="$json_perimetral_disabled\"$name_sensor_disabled\""
+		elif [[ "$i" == pir_* ]]; then
+			name_sensor_disabled="${i#pir_}"
+			if [ -n "$json_pir_disabled" ]; then
+				json_pir_disabled="$json_pir_disabled,"
+			fi
+			json_pir_disabled="$json_pir_disabled\"$name_sensor_disabled\""
+		fi
+	done
+	json_sensor_disabled="\"sensor_disabled\":{\"perimetral\":[$json_perimetral_disabled],\"pir\":[$json_pir_disabled]}"
+
+	local alarm_fired_status=$(alarm_fired_get_status)
+	local al=0
+	if [ $alarm_fired_status -gt 0 ]; then
+		al=1
+	fi
+	json_alarm="\"alarm\":{\"enabled\":\"$(alarm_get_status)\", \"fired\":\"$alarm_fired_status\", \"alarm\":\"$al\"}"
+
+	if [ -f "$LAST_INFO_FILE.$!" ]; then
+		last_info=`cat "$LAST_INFO_FILE.$!"`
+	fi
+	if [ -f "$LAST_WARNING_FILE.$!" ]; then
+		last_warning=`cat "$LAST_WARNING_FILE.$!"`
+	fi
+	if [ -f "$LAST_SUCCESS_FILE.$!" ]; then
+		last_success=`cat "$LAST_SUCCESS_FILE.$!"`
+	fi
+	local json_last_info="\"info\":\"$last_info\""	
+	local json_last_warning="\"warning\":\"$last_warning\""	
+	local json_last_success="\"success\":\"$last_success\""	
+
+	local json_get_cron=""			
+	if [ $with_get_cron != "0" ]; then
+		local values_open="" 
+		local values_close="" 
+		local element_for=""
+		if [ "$with_get_cron" == "1" ]; then
+			element_for="$(seq $EV_TOTAL)"
+		else
+			ev_alias2number $with_get_cron
+			element_for=$?
+		fi
+		for i in $element_for
+		do
+			local a=EV"$i"_ALIAS
+			local av=${!a}
+			local crn="$(cron_get "open" $av)"
+			crn=`echo "$crn" | sed ':a;N;$!ba;s/\n/%%/g'`
+			values_open="\"$av\": \"$crn\", $values_open"
+			local crn="$(cron_get "close" $av)"
+			crn=`echo "$crn" | sed ':a;N;$!ba;s/\n/%%/g'`
+			values_close="\"$av\": \"$crn\", $values_close"
+		done
+		if [[ !  -z  $values_open ]]; then
+			values_open="${values_open::-2}"
+		fi
+		if [[ !  -z  $values_close ]]; then
+			values_close="${values_close::-2}"
+		fi
+
+		json_get_cron="\"open\": {$values_open},\"close\": {$values_close}"
+	fi
+	local json_cron="\"cron\":{$json_get_cron}"			
+
+	json="{$json_version,$json_perimetral,$json_pir,$json_tamper,$json_sensor_disabled,$json_alarm,$json_error,$json_last_info,$json_last_warning,$json_last_success,$json_cron}"
+
+	echo "$json"
 
 }
 
-function stop_guard {
 
-        if [ ! -f "$GUARD_PID_FILE" ]; then
-                echo "Daemon is not running"
-                exit 1
-        fi
-
-	log_write "stop guard daemon"
-	echo "stop guard daemon"
-
-        kill -9 $(list_descendants `cat "$GUARD_PID_FILE"`) 2> /dev/null
-        kill -9 `cat "$GUARD_PID_FILE"` 2> /dev/null
-        rm -f "$GUARD_PID_FILE"
-
-}
-
-function start_socket_server {
-
-	rm -f "$TCPSERVER_PID_FILE"
-	echo $TCPSERVER_PID_SCRIPT > "$TCPSERVER_PID_FILE"
-	$TCPSERVER -v -RHl0 $TCPSERVER_IP $TCPSERVER_PORT $0 socket_server_command 
-
-	#if [ $? -eq 0 ]; then
-	#	echo $TCPSERVER_PID_SCRIPT > "$TCPSERVER_PID_FILE"
-	#	trap stop_socket_server EXIT
-
-	#	log_write "start socket server ";
-	#	return 0
-	#else
-	#	log_write "start socket server failed";
-	#	return 1
-	#fi
-}
-
-function stop_socket_server {
-
-        if [ ! -f "$TCPSERVER_PID_FILE" ]; then
-                echo "Daemon is not running"
-                exit 1
-        fi
-
-	log_write "stop socket server"
-
-        kill -9 $(list_descendants `cat "$TCPSERVER_PID_FILE"`) 2> /dev/null
-        kill -9 `cat "$TCPSERVER_PID_FILE"` 2> /dev/null
-        rm -f "$TCPSERVER_PID_FILE"
-
-}
-
-function socket_server_command {
-
-	RUN_FROM_TCPSERVER=1
-
-	local line=""
-	read line
-	line=$(echo "$line " | $TR -d '[\r\n]')
-	arg1=$(echo "$line " | $CUT -d ' ' -f1)
-	arg2=$(echo "$line " | $CUT -d ' ' -f2)
-	arg3=$(echo "$line " | $CUT -d ' ' -f3)
-	arg4=$(echo "$line " | $CUT -d ' ' -f4)
-	arg5=$(echo "$line " | $CUT -d ' ' -f5)
-	arg6=$(echo "$line " | $CUT -d ' ' -f6)
-	arg7=$(echo "$line " | $CUT -d ' ' -f7)
-
-	log_write "socket connection from: $TCPREMOTEIP - command: $arg1 $arg2 $arg3 $arg4 $arg5 $arg6 $arg7"
-	
-	reset_messages &> /dev/null
-
-	case "$arg1" in
-        	status)
-			json_status $arg2 $arg3 $arg4 $arg5 $arg6 $arg7
-			;;
-
-		open)
-	                if [ "empty$arg2" == "empty" ]; then
-        	                json_error 0 "Alias solenoid not specified"
-			else
-                		ev_open $arg2 $arg3 &> /dev/null
-				json_status "get_cron_open_in"
-			fi
-			;;
-
-		open_in)
-			ev_open_in $arg2 $arg3 $arg4 $arg5 &> /dev/null
-			json_status "get_cron_open_in"
-			;;	
-
-		close)
-	                if [ "empty$arg2" == "empty" ]; then
-        	                json_error 0 "Alias solenoid not specified"
-			else
-                		ev_close $arg2 &> /dev/null
-				json_status "get_cron_open_in"
-                	fi
-			;;
-
-		set_general_cron)
-			local vret=""
-			for i in $arg2 $arg3 $arg4 $arg5 $arg6 $arg7
-		        do
-				if [ $i = "set_cron_init" ]; then
-					vret="$(vret)`set_cron_init`"
-				elif [ $i = "set_cron_start_socket_server" ]; then
-					vret="$(vret)`set_cron_start_socket_server`"
-				elif [ $i = "set_cron_check_rain_sensor" ]; then
-					vret="$(vret)`set_cron_check_rain_sensor`"
-				elif [ $i = "set_cron_check_rain_online" ]; then
-					vret="$(vret)`set_cron_check_rain_online`"
-				elif [ $i = "set_cron_close_all_for_rain" ]; then
-					vret="$(vret)`set_cron_close_all_for_rain`"
-				fi
-			done
-
-			if [[ ! -z $vret ]]; then
-				json_error 0 "Cron set failed"
-				log_write "Cron set failed: $vret"
-			else
-				message_write "success" "Cron set successfull"
-				json_status
-			fi
-
-			;;
-
-		del_cron_open)
-			local vret=""
-
-			vret=`del_cron_open $arg2`
-
-			if [[ ! -z $vret ]]; then
-				json_error 0 "Cron set failed"
-				log_write "Cron del failed: $vret"
-			else
-				message_write "success" "Cron set successfull"
-				json_status
-			fi
-
-			;;
-
-		del_cron_open_in)
-			local vret=""
-
-			vret=`del_cron_open_in $arg2`
-
-			if [[ ! -z $vret ]]; then
-				json_error 0 "Cron del failed"
-				log_write "Cron del failed: $vret"
-			else
-				message_write "success" "Scheduled start successfully deleted"
-				json_status "get_cron_open_in"
-			fi
-
-			;;
-
-
-		del_cron_close)
-			local vret=""
-
-			vret=`del_cron_close $arg2`
-
-			if [[ ! -z $vret ]]; then
-				json_error 0 "Cron set failed"
-				log_write "Cron set failed: $vret"
-			else
-				message_write "success" "Cron set successfull"
-				json_status
-			fi
-
-			;;
-
-			add_cron_open)
-				local vret=""
-
-			vret=`add_cron_open "$arg2" "$arg3" "$arg4" "$arg5" "$arg6" "$arg7"`
-
-			if [[ ! -z $vret ]]; then
-				json_error 0 "Cron set failed"
-				log_write "Cron set failed: $vret"
-			else
-				message_write "success" "Cron set successfull"
-				json_status
-			fi
-
-			;;
-
-		add_cron_close)
-			local vret=""
-
-			vret=`add_cron_close "$arg2" "$arg3" "$arg4" "$arg5" "$arg6" "$arg7"`
-
-			if [[ ! -z $vret ]]; then
-				json_error 0 "Cron set failed"
-				log_write "Cron set failed: $vret"
-			else
-				message_write "success" "Cron set successfull"
-				json_status
-			fi
-
-			;;
-
-		*)
-			json_error 0 "invalid command"
-			;;
-
-	esac
-	
-	reset_messages &> /dev/null
-
-}
 
 json_error()
 {
@@ -1354,284 +986,6 @@ list_descendants ()
   done
 
   echo "$children"
-}
-
-#
-# Avvia la sorveglianza
-#
-function start_guard()
-{
-
-	log_write "Guard start"
-
-	local SENSORS_PERIMETRAL=`perimetral_list_alias`
-	local SENSORS_PIR=`pir_list_alias`
-	local SENSORS_TAMPER=`tamper_list_alias`
-
-	declare -A LAST_STATE
-
-	#
-	# Recupera l'ultimo stato dei sensori
-	#
-	for a in $SENSORS_PERIMETRAL
-	do
-		LAST_STATE[perimetral_$a]=`perimetral_get_status $a`
-		#echo $a: ${LAST_STATE[perimetral_$a]}
-	done
-	for a in $SENSORS_PIR
-	do
-		LAST_STATE[pir_$a]=`pir_get_status $a`
-		#echo $a: ${LAST_STATE[perimetral_$a]}
-	done
-	for a in $SENSORS_TAMPER
-	do
-		LAST_STATE[tamper_$a]=`tamper_get_status $a`
-		#echo $a: ${LAST_STATE[perimetral_$a]}
-	done
-
-
-
-
-	# Fa scattare l'allarme se era già attivato precedentemente altrimenti ne imposta lo stato a zero
-	local ALARM_ENABLED=`alarm_get_status`
-	local ALARM_FIRED=`alarm_fired_get_status`
-	if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -gt 0 ]]; then
-		alarm_fired "reactive"
-	else
-		sensor_set_state "alarm_fired" 0
-	fi
-
-
-	local I=0
-
-	#
-	# Inizio ciclo di lettura dei sensori
-	#
-	while [ 1 ]; do
-
-		local TOTAL_SENSOR_IN_ALARM=0
-		local ALARM_ENABLED=`alarm_get_status`
-
-		if [ "$I" -eq "100" ]; then
-			#log_write "debug"
-			I=0
-		fi
-		I=$((I+1))
-
-		#
-		# Controlla i sensori perimetrali
-		#
-		for a in $SENSORS_PERIMETRAL
-		do
-			perimetral_get_gpio4alias $a
-			local G=$?
-			local STATE=`$GPIO -g read $G`
-
-			# Sensore in allarme
-			if [ "$STATE" == "$PERIMETRAL_GPIO_STATE" ]; then
-				# Passa da stato di non allarme ad allarme
-				if [ "${LAST_STATE[perimetral_$a]}" -eq 0 ]; then
-					local TIME_OPEN=`date +%s`
-					perimetral_set_status $a $TIME_OPEN
-					LAST_STATE[perimetral_$a]=$TIME_OPEN
-					local OUTPUT="Perimetral $a: OPEN $TIME_OPEN"
-					log_write "$OUTPUT"
-					echo "$OUTPUT"
-					trigger_event "perimetral_open" "$a"
-				fi
-
-				# Fa scattare l'allarme se è abiltiato e se non è ancora scattato
-				#local ALARM_ENABLED=`alarm_get_status`
-				local ALARM_FIRED=`alarm_fired_get_status`
-#log_write "*****************"
-#if [[ "$ALARM_ENABLED" -lt 0 || ( "$ALARM_ENABLED" -gt 0 && "$ALARM_FIRED" -eq 0 ) ]]; then
-#if [ "$ALARM_ENABLED" -lt 0 ] || [[ "$ALARM_ENABLED" -gt 0 && "$ALARM_FIRED" -eq 0 ]]; then
-#	log_write "*X* ALARM_ENABLED=$ALARM_ENABLED - ALARM_FIRED=$ALARM_FIRED"
-#fi
-
-				if [[ "$ALARM_ENABLED" -lt 0 || ( "$ALARM_ENABLED" -gt 0 && "$ALARM_FIRED" -eq 0 ) ]]; then
-					local RE="^perimetral_$a$"
-					local R=$($GREP "$RE" "$FILE_ALARM_DISABLE_SENSOR")
-#	log_write "*** R=$R"
-#if [ -z "$R" ] ; then
-#	log_write "*0* R=vuoto"
-#fi
-					
-					if [ -z "$R" ]  && [ "$ALARM_ENABLED" -lt 0 ]; then
-						TOTAL_SENSOR_IN_ALARM=$((TOTAL_SENSOR_IN_ALARM+1))
-#log_write "*1* $ALARM_ENABLED - TOTAL_SENSOR_IN_ALARM=$TOTAL_SENSOR_IN_ALARM"
-					elif [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
-						if [ -z "$R" ]; then
-							alarm_fired "Perimetral $a"
-						else
-							local OUTPUT="Perimetral $a: sensor disabled, not fired alarm $TIME_OPEN"
-							log_write "$OUTPUT"
-							echo "$OUTPUT"
-						fi
-					fi
-
-					#local RE="^perimetral_$a$"
-					#if ! $GREP "$RE" "$FILE_ALARM_DISABLE_SENSOR" > /dev/null; then
-					#	alarm_fired "Perimetral $a"
-					#else
-					#	local OUTPUT="Perimetral $a: sensor disabled, not fired alarm $TIME_OPEN"
-					#	log_write "$OUTPUT"
-					#	echo "$OUTPUT"
-					#fi
-
-				fi
-
-			# Il sensore non è in allarme
-			else
-				# Passa da stato di allarme a non allarme
-				if [ "${LAST_STATE[perimetral_$a]}" -gt 0 ]; then
-					local TIME_CLOSE=`date +%s`
-					perimetral_set_status $a 0
-					LAST_STATE[perimetral_$a]=0
-					local OUTPUT="Perimetral $a: CLOSE $TIME_CLOSE"
-					log_write "$OUTPUT"
-					echo "$OUTPUT"
-					trigger_event "perimetral_close" "$a"
-				fi
-			fi
-
-			sleep $DELAY_LOOP_STATE
-		done
-
-
-		#
-		# Controlla i sensori pir
-		#
-		for a in $SENSORS_PIR
-		do
-			pir_get_gpio4alias $a
-			local G=$?
-#echo $a - $?
-			local STATE=`$GPIO -g read $G`
-
-			# Sensore in allarme
-			if [ "$STATE" == "$PIR_GPIO_STATE" ]; then
-				# Passa da stato di non allarme ad allarme
-				if [ "${LAST_STATE[pir_$a]}" -eq 0 ]; then
-					local TIME_OPEN=`date +%s`
-					pir_set_status $a $TIME_OPEN
-					LAST_STATE[pir_$a]=$TIME_OPEN
-					local OUTPUT="Pir $a: ALERT $TIME_OPEN"
-					log_write "$OUTPUT"
-					echo "$OUTPUT"
-					trigger_event "pir_detect" "$a"
-				fi
-
-				# Fa scattare l'allarme se è abiltiato e se non è ancora scattato
-				#local ALARM_ENABLED=`alarm_get_status`
-				local ALARM_FIRED=`alarm_fired_get_status`
-				if [[ "$ALARM_ENABLED" -lt 0 || ( "$ALARM_ENABLED" -gt 0 && "$ALARM_FIRED" -eq 0 ) ]]; then
-					local RE="^pir_$a$"
-					local R=$($GREP "$RE" "$FILE_ALARM_DISABLE_SENSOR")
-					
-					if [ -z "$R" ]  && [ "$ALARM_ENABLED" -lt 0 ]; then
-						TOTAL_SENSOR_IN_ALARM=$((TOTAL_SENSOR_IN_ALARM+1))
-					elif [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
-						if [ -z "$R" ]; then
-							alarm_fired "Pir $a"
-						else
-							local OUTPUT="Pir $a: sensor disabled, not fired alarm $TIME_OPEN"
-							log_write "$OUTPUT"
-							echo "$OUTPUT"
-						fi
-					fi
-				fi
-
-				#if [[ "$ALARM_ENABLED" -gt 0 ]] && [[ "$ALARM_FIRED" -eq 0 ]]; then
-				#	local RE="^pir_$a$"
-				#	if ! $GREP "$RE" "$FILE_ALARM_DISABLE_SENSOR" > /dev/null; then
-				#		alarm_fired "Pir $a"
-				#	else
-				#		local OUTPUT="Pir $a: sensor disabled, not fired alarm $TIME_OPEN"
-				#		log_write "$OUTPUT"
-				#		echo "$OUTPUT"
-				#	fi
-				#fi
-
-			# Il sensore non è in allarme
-			else
-				# Passa da stato di allarme a non allarme
-				if [ "${LAST_STATE[pir_$a]}" -gt 0 ]; then
-					local TIME_CLOSE=`date +%s`
-					pir_set_status $a 0
-					LAST_STATE[pir_$a]=0
-					local OUTPUT="Pir $a: END ALERT $TIME_CLOSE"
-					log_write "$OUTPUT"
-					echo "$OUTPUT"
-				fi
-			fi
-
-			sleep $DELAY_LOOP_STATE
-		done
-
-
-		#
-		# Controlla i sensori tamper
-		#
-		for a in $SENSORS_TAMPER
-		do
-			tamper_get_gpio4alias $a
-			local G=$?
-			local STATE=`$GPIO -g read $G`
-
-			# Sensore in allarme
-			if [ "$STATE" == "$TAMPER_GPIO_STATE" ]; then
-				# Passa da stato di non allarme ad allarme
-				if [ "${LAST_STATE[tamper_$a]}" -eq 0 ]; then
-					local TIME_OPEN=`date +%s`
-					tamper_set_status $a $TIME_OPEN
-					LAST_STATE[tamper_$a]=$TIME_OPEN
-					local OUTPUT="Tamper $a: ALERT $TIME_OPEN"
-					log_write "$OUTPUT"
-					echo "$OUTPUT"
-					trigger_event "tamper_detect" "$a"
-				fi
-
-				# Fa scattare l'allarme se non è ancora scattato (anche se l'allarme non è abilitato)
-				local ALARM_FIRED=`alarm_fired_get_status`
-				if [[ "$ALARM_FIRED" -eq 0 ]]; then
-					alarm_fired "Tamper $a"
-				fi
-
-			# Il sensore non è in allarme
-			else
-				# Passa da stato di allarme a non allarme
-				if [ "${LAST_STATE[tamper_$a]}" -gt 0 ]; then
-					local TIME_CLOSE=`date +%s`
-					tamper_set_status $a 0
-					LAST_STATE[tamper_$a]=0
-					local OUTPUT="Tamper $a: END ALERT $TIME_CLOSE"
-					log_write "$OUTPUT"
-					echo "$OUTPUT"
-				fi
-			fi
-
-			sleep $DELAY_LOOP_STATE
-		done
-
-		# Se lo stato di alarm_enabled è negativo vuole dire che è stata richiesto l'attivazione dell'allarme,
-		# se nessun sensore è in allarme, lo abilita impostando alarm_enabled con valore positivo.
-		#local ALARM_ENABLED=`alarm_get_status`
-#log_write "ALARM_ENABLED=$ALARM_ENABLED - TOTAL_SENSOR_IN_ALARM=$TOTAL_SENSOR_IN_ALARM"
-		if [[ "$ALARM_ENABLED" -lt 0 ]] && [[ "$TOTAL_SENSOR_IN_ALARM" -eq 0 ]]; then
-#log_write "ALARM_ENABLED=$ALARM_ENABLED - TOTAL_SENSOR_IN_ALARM=$TOTAL_SENSOR_IN_ALARM"
-			local TIME_ALARM=`date +%s`
-			sensor_set_state "alarm_enabled" $TIME_ALARM
-			trigger_event "alarm_enable" ""
-			log_write "Alarm enabled $TIME_ALARM"
-			message_write "success" "Alarm enabled"
-			sleep 1
-		fi
-
-	done
-
-	log_write "Guard end"
-
 }
 
 function debug1 {
@@ -1670,10 +1024,15 @@ else
 	exit 1
 fi
 
+. "$DIR_SCRIPT/include/cron.include.sh"
+. "$DIR_SCRIPT/include/events.include.sh"
+. "$DIR_SCRIPT/include/socket.include.sh"
+. "$DIR_SCRIPT/include/guard.include.sh"
+
 FILE_ALARM_DISABLE_SENSOR="$STATUS_DIR/alarm_disable_sensor"
 
 LAST_INFO_FILE="$STATUS_DIR/last_info"
-LAST_WARNING_FILE="$STATUS_DIR/last_worning"
+LAST_WARNING_FILE="$STATUS_DIR/last_warning"
 LAST_SUCCESS_FILE="$STATUS_DIR/last_success"
 
 case "$1" in
@@ -1816,6 +1175,10 @@ case "$1" in
 		del_cron_start_socket_server
 		;;
 
+	json_status)
+		json_status $2 $3 $4 $5 $6
+		;;
+
 	debug1)
 		debug1 $2 $3 $4 $5
 		;;
@@ -1834,4 +1197,7 @@ esac
 # Elimina eventuali file temporane utilizzati per la gestione dei cron
 rm "$TMP_CRON_FILE" 2> /dev/null
 rm "$TMP_CRON_FILE-2" 2> /dev/null
+
+reset_messages &> /dev/null
+
 
