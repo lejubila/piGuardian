@@ -289,7 +289,7 @@ function start_guard()
 #log_write "ALARM_ENABLED=$ALARM_ENABLED - TOTAL_SENSOR_IN_ALARM=$TOTAL_SENSOR_IN_ALARM"
 			local TIME_ALARM=`date +%s`
 			sensor_set_state "alarm_enabled" $TIME_ALARM
-			trigger_event "alarm_enable" ""
+			#trigger_event "alarm_enable" ""
 			log_write "Alarm enabled $TIME_ALARM"
 			message_write "success" "Alarm enabled"
 			sleep 1

@@ -113,12 +113,18 @@ function sensor_set_state {
 #
 # Legge lo stato di un sensore 
 # $1 alias del sensore
+# $2 default value
 #
 function sensor_get_state {
 	local STATE_FILE="$STATUS_DIR/$1"
+	local DEFAULT="$2"
+
+	if [ -z "$DEFAULT" ]; then
+		DEFAULT=0
+	fi
 
 	if [ ! -e "$STATE_FILE" ]; then
-		sensor_set_state "$1" 0
+		sensor_set_state "$1" "$DEFAULT"
 		echo 0
 	else
 		cat "$STATE_FILE"
@@ -574,17 +580,36 @@ function alarm_get_status {
 
 #
 # Abilita l'allarme
+# $1 tipo allarme: home, away, empty
 #
 function alarm_enable {
 	local TIME_ALARM=-`date +%s`
+	local TYPE="$1"
+	local ARMED="armed"
 	# Imposta alarm_enabled con stato negativo per indicare che è stato richiesto l'attivazione dell'allarme
 	# l'allarme viene abilitato dalla funzione start_guard avviata in background quando alarm_enabled viene trovato 
 	# con stato negativo e tutti i sensori non sono in allarme
 	sensor_set_state "alarm_enabled" $TIME_ALARM
+	
+	trigger_event "alarm_pending" "$output"
+	sensor_set_state "alarm_state" "pending"
 
 	local i=0
 	local time_sleep=10
 	local alarm_state=0
+
+	# Se è stato scelto l'allarme di tipo home abilita tutti i sensori ad accezione dei sensori di movimento (pir)
+log_write "TYPE = $TYPE"
+	if [ "$TYPE" == "home" ]; then
+log_write "**** dentro home"
+		alarm_enable_all_sensor
+		alarm_disable_sensor pir all
+		ARMED="armed_home"
+	# Se è stato scelto l'allarme di tipo away abilita tutti i sensori
+	elif [ "$TYPE" == "away" ]; then
+		alarm_enable_all_sensor
+		ARMED="armed_away"
+	fi
 
 	# Ettende un tempo minimo per verificare se l'allarme sia stato attivato dalla funzione start_guard che gira in background
 	while [ $i -lt $time_sleep ]
@@ -601,13 +626,17 @@ function alarm_enable {
 	local output=""
 	if [ $alarm_state -lt 0 ]; then
 		sensor_set_state "alarm_enabled" 0
+		sensor_set_state "alarm_state" "disarmed"
 		output="Alarm not activated: some sensors are in alarm" 
 		log_write "$output"
 		message_write "warning" "$output"
 		trigger_event "alarm_enable_fail" "$output"
 	elif [ $alarm_state -gt 0 ]; then
-		output="Alarm activated" 
+		output="Alarm activated $ARMED" 
+		sensor_set_state "alarm_state" "$ARMED"
+		trigger_event "alarm_enable" ""
 	else
+		sensor_set_state "alarm_state" "disarmed"
 		output="Alarm not activated" 
 		log_write "$output"
 		message_write "warning" "$output"
@@ -615,10 +644,6 @@ function alarm_enable {
 	fi
 	echo "$output"
 
-#	sensor_set_state "alarm_enabled" $TIME_ALARM
-#	log_write "Alarm enabled $TIME_ALARM"
-
-#	trigger_event "alarm_enable" ""
 }
 
 #
@@ -632,6 +657,8 @@ function alarm_disable {
 	if [ "$(alarm_fired_get_status)" -gt 0 ]; then
 		alarm_unfired
 	fi
+
+	sensor_set_state "alarm_state" "disarmed"
 
 	trigger_event "alarm_disable" ""
 }
@@ -670,6 +697,7 @@ function alarm_fired {
 		done
 	fi
 
+	sensor_set_state "alarm_state" "triggered"
 	trigger_event "alarm_fired" "$cause"
 
 }
@@ -778,7 +806,7 @@ function show_usage {
 	echo -e "\t                                                           with 'force' parameter force close guard service if already open"
 	echo -e "\t$NAME_SCRIPT stop_guard                                   stop guard daemon"
 	echo -e "\t"
-	echo -e "\t$NAME_SCRIPT alarm_enable                                 enable alarm"
+	echo -e "\t$NAME_SCRIPT alarm_enable [home|away]                     enable alarm"
 	echo -e "\t$NAME_SCRIPT alarm_disable                                disable alarm"
 	echo -e "\t$NAME_SCRIPT alarm_get_status                             show status alarm"
 	echo -e "\t$NAME_SCRIPT alarm_fired                                  fired alarm"
@@ -986,6 +1014,7 @@ function mqtt_status {
 
 	local js=$(json_status)
 	$MOSQUITTO_PUB -h $MQTT_HOST -p $MQTT_PORT -u $MQTT_USER -P $MQTT_PWD -i $MQTT_CLIENT_ID -r -t "$MQTT_TOPIC" -m "$js"
+	$MOSQUITTO_PUB -h $MQTT_HOST -p $MQTT_PORT -u $MQTT_USER -P $MQTT_PWD -i $MQTT_CLIENT_ID -r -t "$MQTT_TOPIC/alarm_state" -m "$(sensor_get_state alarm_state disarmed)"
 }
 
 list_descendants ()
@@ -1114,7 +1143,7 @@ case "$1" in
 
 
 	alarm_enable)
-		alarm_enable
+		alarm_enable "$2"
 		;;
 
 	alarm_disable)

@@ -49,7 +49,7 @@ function socket_server_command {
 			;;
 
 		alarm_enable)
-			alarm_enable &> /dev/null
+			alarm_enable "$arg2" &> /dev/null
 			json_status
 			;;
 

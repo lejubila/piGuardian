@@ -127,6 +127,6 @@ MQTT_HOST=you_host_mqtt
 MQTT_PORT=1883
 MQTT_USER=your_user_mqtt
 MQTT_PWD=yout_password_mqtt
-MQTT_TOPIC=""
+MQTT_TOPIC="piguardian/result"
 MQTT_CLIENT_ID=piGuardian
 
