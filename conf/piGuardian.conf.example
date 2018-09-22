@@ -122,7 +122,12 @@ SIREN1_GPIO="18"			# Gpio 1 / Physical 12
 TCPSERVER_IP="127.0.0.1"
 TCPSERVER_PORT="8084"
 
+# Utente e password che i clients devono utilizzare per stabilire una connessione tramite socket server
+TCPSERVER_USER=""
+TCPSERVER_PWD=""
+
 # Parametri connessione al broker mqtt
+MQTT_ENABLE=0	# set 1 to enable
 MQTT_HOST=you_host_mqtt
 MQTT_PORT=1883
 MQTT_USER=your_user_mqtt

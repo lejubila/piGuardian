@@ -599,9 +599,7 @@ function alarm_enable {
 	local alarm_state=0
 
 	# Se è stato scelto l'allarme di tipo home abilita tutti i sensori ad accezione dei sensori di movimento (pir)
-log_write "TYPE = $TYPE"
 	if [ "$TYPE" == "home" ]; then
-log_write "**** dentro home"
 		alarm_enable_all_sensor
 		alarm_disable_sensor pir all
 		ARMED="armed_home"
@@ -773,7 +771,7 @@ function alarm_disable_sensor {
 
 	local output="Sensor successfully disabled: $TYPE $2"
 	echo $output
-	log_write " $output"
+	log_write "$output"
 	message_write "success" "Sensor successfully disabled"
 
 	trigger_event "alarm_disable_sensor" "$TYPE $2"
@@ -859,6 +857,11 @@ function json_status {
 	local last_warning=""
 	local last_success=""
 	local with_get_cron="0"
+	local current_pid=$!
+
+	if [ "$PARENT_PID" -gt "0" ]; then
+		current_pid=$PARENT_PID
+	fi
 
 	local vret=""
 	for i in $1 $2 $3 $4 $5 $6
@@ -950,14 +953,14 @@ function json_status {
 	fi
 	json_alarm="\"alarm\":{\"enabled\":\"$(alarm_get_status)\", \"fired\":\"$alarm_fired_status\", \"alarm\":\"$al\"}"
 
-	if [ -f "$LAST_INFO_FILE.$!" ]; then
-		last_info=`cat "$LAST_INFO_FILE.$!"`
+	if [ -f "$LAST_INFO_FILE.$current_pid" ]; then
+		last_info=`cat "$LAST_INFO_FILE.$current_pid"`
 	fi
-	if [ -f "$LAST_WARNING_FILE.$!" ]; then
-		last_warning=`cat "$LAST_WARNING_FILE.$!"`
+	if [ -f "$LAST_WARNING_FILE.$current_pid" ]; then
+		last_warning=`cat "$LAST_WARNING_FILE.$current_pid"`
 	fi
-	if [ -f "$LAST_SUCCESS_FILE.$!" ]; then
-		last_success=`cat "$LAST_SUCCESS_FILE.$!"`
+	if [ -f "$LAST_SUCCESS_FILE.$current_pid" ]; then
+		last_success=`cat "$LAST_SUCCESS_FILE.$current_pid"`
 	fi
 	local json_last_info="\"info\":\"$last_info\""	
 	local json_last_warning="\"warning\":\"$last_warning\""	
@@ -996,7 +999,9 @@ function json_status {
 	fi
 	local json_cron="\"cron\":{$json_get_cron}"			
 
-	json="{$json_version,$json_perimetral,$json_pir,$json_tamper,$json_sensor_disabled,$json_alarm,$json_error,$json_last_info,$json_last_warning,$json_last_success,$json_cron}"
+	local json_timestamp="\"timestamp\": $(date +%s)"
+
+	json="{$json_version,$json_timestamp,$json_perimetral,$json_pir,$json_tamper,$json_sensor_disabled,$json_alarm,$json_error,$json_last_info,$json_last_warning,$json_last_success,$json_cron}"
 
 	echo "$json"
 
@@ -1010,7 +1015,17 @@ json_error()
 #
 # Invia al broker mqtt il json contentente lo stato del sistema
 #
+# $1 parent pid (opzionale)
+#
 function mqtt_status {
+
+	if [ ! $MQTT_ENABLE -eq 1 ]; then
+		return
+	fi
+
+	if [ ! -z "$1" ]; then
+		PARENT_PID=$1
+	fi
 
 	local js=$(json_status)
 	$MOSQUITTO_PUB -h $MQTT_HOST -p $MQTT_PORT -u $MQTT_USER -P $MQTT_PWD -i $MQTT_CLIENT_ID -r -t "$MQTT_TOPIC" -m "$js"
@@ -1075,6 +1090,8 @@ FILE_ALARM_DISABLE_SENSOR="$STATUS_DIR/alarm_disable_sensor"
 LAST_INFO_FILE="$STATUS_DIR/last_info"
 LAST_WARNING_FILE="$STATUS_DIR/last_warning"
 LAST_SUCCESS_FILE="$STATUS_DIR/last_success"
+
+PARENT_PID=0
 
 case "$1" in
 	init) 
@@ -1220,7 +1237,7 @@ case "$1" in
 		json_status $2 $3 $4 $5 $6
 		;;
 	mqtt_status)
-		mqtt_status
+		mqtt_status $2
 		;;
 
 	debug1)

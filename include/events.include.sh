@@ -15,7 +15,7 @@ function trigger_event {
 		for f in $FILES
 		do
 			if [ -x "$f" ]; then
-				$f "$EVENT" "$CAUSE" `date +%s` "$DIR_SCRIPT" &> /dev/null &
+				$f "$EVENT" "$CAUSE" `date +%s` "$!" &> /dev/null &
 			fi
 		done
 
