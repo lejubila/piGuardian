@@ -21,6 +21,8 @@ function trigger_event {
 
 	fi
 
+	mqtt_status &
+
 }
 
 

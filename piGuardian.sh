@@ -60,9 +60,10 @@ function initialize {
 }
 
 function reset_messages {
-	rm -f "$LAST_INFO_FILE.$!"
-	rm -f "$LAST_WARNING_FILE.$!"
-	rm -f "$LAST_SUCCESS_FILE.$!"
+
+	rm -f "$LAST_INFO_FILE.$$"
+	rm -f "$LAST_WARNING_FILE.$$"
+	rm -f "$LAST_SUCCESS_FILE.$$"
 }
 
 #
@@ -89,15 +90,15 @@ function log_write {
 function message_write {
 	local file_message=""
 	if [ "$1" = 'info' ]; then
-		file_message="$LAST_INFO_FILE.$!"
+		file_message="$LAST_INFO_FILE.$$"
 	elif [ "$1" = "warning" ]; then
-		file_message="$LAST_WARNING_FILE.$!"
+		file_message="$LAST_WARNING_FILE.$$"
 	elif [ "$1" = "success" ]; then
-		file_message="$LAST_SUCCESS_FILE.$!"
+		file_message="$LAST_SUCCESS_FILE.$$"
 	else
 		return
 	fi
-	
+
 	echo "$2" > "$file_message"
 }
 
@@ -179,7 +180,7 @@ function perimetral_get_gpio4alias {
 	done
 
 	log_write "ERROR perimetral sensor alias not found: $1"
-	message_write "warning" "Perimetral sensor alias not found"
+	#message_write "warning" "Perimetral sensor alias not found"
 	exit 1
 }
 
@@ -198,7 +199,7 @@ function perimetral_get_number4alias {
 	done
 
 	log_write "ERROR perimetral sensor alias not found: $1"
-	message_write "warning" "Perimetral sensor alias not found"
+	#message_write "warning" "Perimetral sensor alias not found"
 	exit 1
 }
 
@@ -216,7 +217,7 @@ function perimetral_get_alias4number {
 	fi
 
 	log_write "ERROR perimetral sensor number not found: $1"
-	message_write "warning" "Perimetral sensor number not found"
+	#message_write "warning" "Perimetral sensor number not found"
 	exit 1
 }
 
@@ -260,7 +261,7 @@ function perimetral_get_status {
 		local output="alias perimetral sensor not found: $1"
 		echo $output
 		log_write "ERROR $output"
-		message_write "warning" "$output"
+		#message_write "warning" "$output"
 		exit 
 	fi
 
@@ -277,7 +278,7 @@ function perimetral_set_status {
 		local output="alias perimetral sensor not found: $1"
 		echo $output
 		log_write "ERROR $output"
-		message_write "warning" "$output"
+		#message_write "warning" "$output"
 		exit 
 	fi
 
@@ -317,7 +318,7 @@ function tamper_get_gpio4alias {
 	done
 
 	log_write "ERROR tamper sensor alias not found: $1"
-	message_write "warning" "Tamper sensor alias not found"
+	#message_write "warning" "Tamper sensor alias not found"
 	exit 1
 }
 
@@ -336,7 +337,7 @@ function tamper_get_number4alias {
 	done
 
 	log_write "ERROR tamper sensor alias not found: $1"
-	message_write "warning" "Tamper sensor alias not found"
+	#message_write "warning" "Tamper sensor alias not found"
 	exit 1
 }
 
@@ -354,7 +355,7 @@ function tamper_get_alias4number {
 	fi
 
 	log_write "ERROR tamper sensor number not found: $1"
-	message_write "warning" "Tamper sensor number not found"
+	#message_write "warning" "Tamper sensor number not found"
 	exit 1
 }
 
@@ -398,7 +399,7 @@ function tamper_get_status {
 		local output="alias tamper sensor not found: $1"
 		echo $output
 		log_write "ERROR $output"
-		message_write "warning" "$output"
+		#message_write "warning" "$output"
 		exit 
 	fi
 	sensor_get_state "tamper_$1"
@@ -414,7 +415,7 @@ function tamper_set_status {
 		local output="alias tamper sensor not found: $1"
 		echo $output
 		log_write "ERROR $output"
-		message_write "warning" "$output"
+		#message_write "warning" "$output"
 		exit 
 	fi
 	sensor_set_state "tamper_$1" $2
@@ -453,7 +454,7 @@ function pir_get_gpio4alias {
 	done
 
 	log_write "ERROR pir sensor alias not found: $1"
-	message_write "warning" "Pir sensor alias not found"
+	#message_write "warning" "Pir sensor alias not found"
 	exit 1
 }
 
@@ -472,7 +473,7 @@ function pir_get_number4alias {
 	done
 
 	log_write "ERROR pir sensor alias not found: $1"
-	message_write "warning" "Pir sensor alias not found"
+	#message_write "warning" "Pir sensor alias not found"
 	exit 1
 }
 
@@ -490,7 +491,7 @@ function pir_get_alias4number {
 	fi
 
 	log_write "ERROR pir sensor number not found: $1"
-	message_write "warning" "Pir sensor number not found"
+	#message_write "warning" "Pir sensor number not found"
 	exit 1
 }
 
@@ -534,7 +535,7 @@ function pir_get_status {
 		local output="alias pir sensor not found: $1"
 		echo $output
 		log_write "ERROR $output"
-		message_write "warning" "$output"
+		#message_write "warning" "$output"
 		exit 
 	fi
 	sensor_get_state "pir_$1"
@@ -550,7 +551,7 @@ function pir_set_status {
 		local output="alias pir sensor not found: $1"
 		echo $output
 		log_write "ERROR $output"
-		message_write "warning" "$output"
+		#message_write "warning" "$output"
 		exit 
 	fi
 	sensor_set_state "pir_$1" $2
@@ -632,6 +633,7 @@ function alarm_enable {
 	elif [ $alarm_state -gt 0 ]; then
 		output="Alarm activated $ARMED" 
 		sensor_set_state "alarm_state" "$ARMED"
+		message_write "success" "Alarm activation successful ($output)"
 		trigger_event "alarm_enable" ""
 	else
 		sensor_set_state "alarm_state" "disarmed"
@@ -658,6 +660,7 @@ function alarm_disable {
 
 	sensor_set_state "alarm_state" "disarmed"
 
+	message_write "success" "Alarm disarmed successful"
 	trigger_event "alarm_disable" ""
 }
 
@@ -738,7 +741,7 @@ function alarm_disable_sensor {
 		local output="type "$TYPE" is wrong"
 		echo $output
 		log_write "ERROR $output"
-		message_write "warning" "$output"
+		#message_write "warning" "$output"
 		exit 
 	fi
 
@@ -752,13 +755,13 @@ function alarm_disable_sensor {
 			local output="alias perimetal sensor not found: $ALIAS"
 			echo $output
 			log_write "ERROR $output"
-			message_write "warning" "$output"
+			#message_write "warning" "$output"
 			exit 
 		elif [ "$TYPE" == "pir" ] && [ "$(pir_alias_exists $ALIAS)" == "FALSE" ]; then
 			local output="alias pir sensor not found: $ALIAS"
 			echo $output
 			log_write "ERROR $output"
-			message_write "warning" "$output"
+			#message_write "warning" "$output"
 			exit 
 		fi
 		ALIASIS="$ALIAS"
@@ -857,7 +860,7 @@ function json_status {
 	local last_warning=""
 	local last_success=""
 	local with_get_cron="0"
-	local current_pid=$!
+	local current_pid=$$
 
 	if [ "$PARENT_PID" -gt "0" ]; then
 		current_pid=$PARENT_PID
