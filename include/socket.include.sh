@@ -56,7 +56,7 @@ function socket_server_command {
 
 	log_write "socket connection from: $TCPREMOTEIP - command: $arg1 $arg2 $arg3 $arg4 $arg5 $arg6 $arg7"
 	
-	reset_messages &> /dev/null
+	#reset_messages &> /dev/null
 
 	case "$arg1" in
         	status)
@@ -83,101 +83,10 @@ function socket_server_command {
 			json_status
 			;;
 
-		open)
-	                if [ "empty$arg2" == "empty" ]; then
-        	                json_error 0 "Alias solenoid not specified"
-			else
-                		ev_open $arg2 $arg3 &> /dev/null
-				json_status "get_cron_open_in"
-			fi
-			;;
-
-		set_general_cron)
-			local vret=""
-			for i in $arg2 $arg3 $arg4 $arg5 $arg6 $arg7
-		        do
-				if [ $i = "set_cron_init" ]; then
-					vret="$(vret)`set_cron_init`"
-				elif [ $i = "set_cron_start_socket_server" ]; then
-					vret="$(vret)`set_cron_start_socket_server`"
-				elif [ $i = "set_cron_check_rain_sensor" ]; then
-					vret="$(vret)`set_cron_check_rain_sensor`"
-				elif [ $i = "set_cron_check_rain_online" ]; then
-					vret="$(vret)`set_cron_check_rain_online`"
-				elif [ $i = "set_cron_close_all_for_rain" ]; then
-					vret="$(vret)`set_cron_close_all_for_rain`"
-				fi
-			done
-
-			if [[ ! -z $vret ]]; then
-				json_error 0 "Cron set failed"
-				log_write "Cron set failed: $vret"
-			else
-				message_write "success" "Cron set successfull"
-				json_status
-			fi
-
-			;;
-
-		del_cron_open)
-			local vret=""
-
-			vret=`del_cron_open $arg2`
-
-			if [[ ! -z $vret ]]; then
-				json_error 0 "Cron set failed"
-				log_write "Cron del failed: $vret"
-			else
-				message_write "success" "Cron set successfull"
-				json_status
-			fi
-
-			;;
-
-
-		del_cron_close)
-			local vret=""
-
-			vret=`del_cron_close $arg2`
-
-			if [[ ! -z $vret ]]; then
-				json_error 0 "Cron set failed"
-				log_write "Cron set failed: $vret"
-			else
-				message_write "success" "Cron set successfull"
-				json_status
-			fi
-
-			;;
-
-			add_cron_open)
-				local vret=""
-
-			vret=`add_cron_open "$arg2" "$arg3" "$arg4" "$arg5" "$arg6" "$arg7"`
-
-			if [[ ! -z $vret ]]; then
-				json_error 0 "Cron set failed"
-				log_write "Cron set failed: $vret"
-			else
-				message_write "success" "Cron set successfull"
-				json_status
-			fi
-
-			;;
-
-		add_cron_close)
-			local vret=""
-
-			vret=`add_cron_close "$arg2" "$arg3" "$arg4" "$arg5" "$arg6" "$arg7"`
-
-			if [[ ! -z $vret ]]; then
-				json_error 0 "Cron set failed"
-				log_write "Cron set failed: $vret"
-			else
-				message_write "success" "Cron set successfull"
-				json_status
-			fi
-
+		set_state)
+			sensor_set_state "$arg2" "$arg3" &> /dev/null
+			json_status
+			mqtt_status
 			;;
 
 		*)
@@ -186,7 +95,7 @@ function socket_server_command {
 
 	esac
 	
-	reset_messages &> /dev/null
+	#reset_messages &> /dev/null
 
 }
 

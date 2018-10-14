@@ -59,7 +59,7 @@ function initialize {
 
 }
 
-function reset_messages {
+function reset_messages_old {
 
 	rm -f "$LAST_INFO_FILE.$$"
 	rm -f "$LAST_WARNING_FILE.$$"
@@ -88,6 +88,20 @@ function log_write {
 # $2 messaggio
 #
 function message_write {
+	local file_message=""
+	if [ "$1" = 'info' ]; then
+		MESSAGE_INFO="$2"
+	elif [ "$1" = "warning" ]; then
+		MESSAGE_WARNING="$2"
+	elif [ "$1" = "success" ]; then
+		MESSAGE_SUCCESS="$2"
+	else
+		return
+	fi
+
+}
+
+function message_write_old {
 	local file_message=""
 	if [ "$1" = 'info' ]; then
 		file_message="$LAST_INFO_FILE.$$"
@@ -126,7 +140,7 @@ function sensor_get_state {
 
 	if [ ! -e "$STATE_FILE" ]; then
 		sensor_set_state "$1" "$DEFAULT"
-		echo 0
+		echo "$DEFAULT"
 	else
 		cat "$STATE_FILE"
 	fi
@@ -601,13 +615,17 @@ function alarm_enable {
 
 	# Se è stato scelto l'allarme di tipo home abilita tutti i sensori ad accezione dei sensori di movimento (pir)
 	if [ "$TYPE" == "home" ]; then
-		alarm_enable_all_sensor
-		alarm_disable_sensor pir all
+		if [ $(sensor_get_state alarm_custom_mode 0) -eq 0 ]; then
+			alarm_enable_all_sensor
+			alarm_disable_sensor pir all
+		fi
 		ARMED="armed_home"
 	# Se è stato scelto l'allarme di tipo away abilita tutti i sensori
 	elif [ "$TYPE" == "away" ]; then
-		alarm_enable_all_sensor
-		ARMED="armed_away"
+		if [ $(sensor_get_state alarm_custom_mode 0) -eq 0 ]; then
+			alarm_enable_all_sensor
+			ARMED="armed_away"
+		fi
 	fi
 
 	# Ettende un tempo minimo per verificare se l'allarme sia stato attivato dalla funzione start_guard che gira in background
@@ -829,14 +847,12 @@ function show_usage {
 	echo -e "\t                                                           with 'force' parameter force close socket server if already open"
 	echo -e "\t$NAME_SCRIPT stop_socket_server                           stop socket server"
 	echo -e "\t"
-	echo -e "\t$NAME_SCRIPT json_status [get_cron]                       show status in json format"
+	echo -e "\t$NAME_SCRIPT json_status                                  show status in json format"
 	echo -e "\t$NAME_SCRIPT mqtt_status                                  send status in json format to mqtt broker"
 	echo -e "\t"
-	echo -e "\t$NAME_SCRIPT set_cron_init                                set crontab for initialize control unit"
-	echo -e "\t$NAME_SCRIPT del_cron_init                                remove crontab for initialize control unit"
-	echo -e "\t$NAME_SCRIPT set_cron_start_socket_server                 set crontab for start socket server"
-	echo -e "\t$NAME_SCRIPT del_cron_start_socket_server                 remove crontab for start socket server"
-	echo -e "\t"
+	echo -e "\t$NAME_SCRIPT set_state name_state value_state             set value in state variable"
+	echo -e "\t$NAME_SCRIPT get_state name_state [default_value_state]   get value from state variable"
+
 	echo -e "\t$NAME_SCRIPT debug1 [parameter]|[parameter]|..]           Run debug code 1"
 	echo -e "\t$NAME_SCRIPT debug2 [parameter]|[parameter]|..]           Run debug code 2"
 }
@@ -845,7 +861,6 @@ function show_usage {
 #
 # Stampa un json contanente lo status della centralina
 # $1 .. $6 parametri opzionali
-# 	- get_cron: aggiunge i dati relativi ai crontab delle scehdulazioni di apertura/chisura delle elettrovalvole
 #
 function json_status {
 	local json=""
@@ -859,7 +874,6 @@ function json_status {
 	local last_info=""
 	local last_warning=""
 	local last_success=""
-	local with_get_cron="0"
 	local current_pid=$$
 
 	if [ "$PARENT_PID" -gt "0" ]; then
@@ -867,12 +881,12 @@ function json_status {
 	fi
 
 	local vret=""
-	for i in $1 $2 $3 $4 $5 $6
-        do
-		if [ $i = "get_cron" ]; then
-			with_get_cron="1"
-		fi
-	done
+#	for i in $1 $2 $3 $4 $5 $6
+#        do
+#		if [ $i = "get_cron" ]; then
+#			with_get_cron="1"
+#		fi
+#	done
 
 	local a
 	local av
@@ -954,57 +968,29 @@ function json_status {
 	if [ $alarm_fired_status -gt 0 ]; then
 		al=1
 	fi
-	json_alarm="\"alarm\":{\"enabled\":\"$(alarm_get_status)\", \"fired\":\"$alarm_fired_status\", \"alarm\":\"$al\"}"
+	local custom_mode=$(sensor_get_state alarm_custom_mode 0)
+	json_alarm="\"alarm\":{\"enabled\":\"$(alarm_get_status)\", \"fired\":\"$alarm_fired_status\", \"alarm\":\"$al\", \"custom_mode\": $custom_mode}"
 
-	if [ -f "$LAST_INFO_FILE.$current_pid" ]; then
-		last_info=`cat "$LAST_INFO_FILE.$current_pid"`
-	fi
-	if [ -f "$LAST_WARNING_FILE.$current_pid" ]; then
-		last_warning=`cat "$LAST_WARNING_FILE.$current_pid"`
-	fi
-	if [ -f "$LAST_SUCCESS_FILE.$current_pid" ]; then
-		last_success=`cat "$LAST_SUCCESS_FILE.$current_pid"`
-	fi
+	#if [ -f "$LAST_INFO_FILE.$current_pid" ]; then
+	#	last_info=`cat "$LAST_INFO_FILE.$current_pid"`
+	#fi
+	#if [ -f "$LAST_WARNING_FILE.$current_pid" ]; then
+	#	last_warning=`cat "$LAST_WARNING_FILE.$current_pid"`
+	#fi
+	#if [ -f "$LAST_SUCCESS_FILE.$current_pid" ]; then
+	#	last_success=`cat "$LAST_SUCCESS_FILE.$current_pid"`
+	#fi
+	last_info="$MESSAGE_INFO"
+	last_warning="$MESSAGE_WARNING"
+	last_success="$MESSAGE_SUCCESS"
+
 	local json_last_info="\"info\":\"$last_info\""	
 	local json_last_warning="\"warning\":\"$last_warning\""	
 	local json_last_success="\"success\":\"$last_success\""	
 
-	local json_get_cron=""			
-	if [ $with_get_cron != "0" ]; then
-		local values_open="" 
-		local values_close="" 
-		local element_for=""
-		if [ "$with_get_cron" == "1" ]; then
-			element_for="$(seq $EV_TOTAL)"
-		else
-			ev_alias2number $with_get_cron
-			element_for=$?
-		fi
-		for i in $element_for
-		do
-			local a=EV"$i"_ALIAS
-			local av=${!a}
-			local crn="$(cron_get "open" $av)"
-			crn=`echo "$crn" | sed ':a;N;$!ba;s/\n/%%/g'`
-			values_open="\"$av\": \"$crn\", $values_open"
-			local crn="$(cron_get "close" $av)"
-			crn=`echo "$crn" | sed ':a;N;$!ba;s/\n/%%/g'`
-			values_close="\"$av\": \"$crn\", $values_close"
-		done
-		if [[ !  -z  $values_open ]]; then
-			values_open="${values_open::-2}"
-		fi
-		if [[ !  -z  $values_close ]]; then
-			values_close="${values_close::-2}"
-		fi
-
-		json_get_cron="\"open\": {$values_open},\"close\": {$values_close}"
-	fi
-	local json_cron="\"cron\":{$json_get_cron}"			
-
 	local json_timestamp="\"timestamp\": $(date +%s)"
 
-	json="{$json_version,$json_timestamp,$json_perimetral,$json_pir,$json_tamper,$json_sensor_disabled,$json_alarm,$json_error,$json_last_info,$json_last_warning,$json_last_success,$json_cron}"
+	json="{$json_version,$json_timestamp,$json_perimetral,$json_pir,$json_tamper,$json_sensor_disabled,$json_alarm,$json_error,$json_last_info,$json_last_warning,$json_last_success}"
 
 	echo "$json"
 
@@ -1074,8 +1060,6 @@ RUN_FROM_TCPSERVER=0
 GUARD_PID_FILE="$TMP_PATH/piGuardianGuard.pid"
 GUARD_PID_SCRIPT=$$
 
-TMP_CRON_FILE="$TMP_PATH/piguardian.user.cron.$$"
-
 if [ -f $CONFIG_ETC ]; then
 	. $CONFIG_ETC
 else
@@ -1083,16 +1067,18 @@ else
 	exit 1
 fi
 
-. "$DIR_SCRIPT/include/cron.include.sh"
 . "$DIR_SCRIPT/include/events.include.sh"
 . "$DIR_SCRIPT/include/socket.include.sh"
 . "$DIR_SCRIPT/include/guard.include.sh"
 
 FILE_ALARM_DISABLE_SENSOR="$STATUS_DIR/alarm_disable_sensor"
 
-LAST_INFO_FILE="$STATUS_DIR/last_info"
-LAST_WARNING_FILE="$STATUS_DIR/last_warning"
-LAST_SUCCESS_FILE="$STATUS_DIR/last_success"
+#LAST_INFO_FILE="$STATUS_DIR/last_info"
+#LAST_WARNING_FILE="$STATUS_DIR/last_warning"
+#LAST_SUCCESS_FILE="$STATUS_DIR/last_success"
+MESSAGE_INFO=""
+MESSAGE_WARNING=""
+MESSAGE_SUCCESS=""
 
 PARENT_PID=0
 
@@ -1220,20 +1206,12 @@ case "$1" in
 		socket_server_command
 		;;
 
-	set_cron_init)
-		set_cron_init
+	set_state)
+		sensor_set_state "$2" "$3"
 		;;
 
-	del_cron_init)
-		del_cron_init
-		;;
-
-	set_cron_start_socket_server)
-		set_cron_start_socket_server
-		;;
-
-	del_cron_start_socket_server)
-		del_cron_start_socket_server
+	get_state)
+		sensor_get_state "$2" "$3"
 		;;
 
 	json_status)
@@ -1258,10 +1236,6 @@ case "$1" in
 		;;
 esac
 
-# Elimina eventuali file temporane utilizzati per la gestione dei cron
-rm "$TMP_CRON_FILE" 2> /dev/null
-rm "$TMP_CRON_FILE-2" 2> /dev/null
-
-reset_messages &> /dev/null
+#reset_messages &> /dev/null
 
 
