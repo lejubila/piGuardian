@@ -18,25 +18,37 @@ function initialize {
 	# Inizializza i gpio dei sensori perimetrali 
 	for i in $(seq $PERIMETRAL_TOTAL)
 	do
-		g=PERIMETRAL"$i"_GPIO
-		$GPIO -g mode ${!g} in			# setta il gpio nella modalita di lettura
-		#perimetral_set_state $i 0
+		perimetral_is_mqtt4alias $(perimetral_get_alias4number $i)
+		local G=$?
+		if [ "$G" == "0" ]; then
+			g=PERIMETRAL"$i"_GPIO
+			$GPIO -g mode ${!g} in			# setta il gpio nella modalita di lettura
+			#perimetral_set_state $i 0
+		fi
 	done
 
 	# Inizializza i gpio dei sensori pir 
-	for i in $(seq $PERIMETRAL_TOTAL)
+	for i in $(seq $PIR_TOTAL)
 	do
-		g=PIR"$i"_GPIO
-		$GPIO -g mode ${!g} in			# setta il gpio nella modalita di lettura
-		#pir_set_state $i 0
+		pir_is_mqtt4alias $(pir_get_alias4number $i)
+		local G=$?
+		if [ "$G" == "0" ]; then
+			g=PIR"$i"_GPIO
+			$GPIO -g mode ${!g} in			# setta il gpio nella modalita di lettura
+			#pir_set_state $i 0
+		fi
 	done
 
 	# Inizializza i gpio dei sensori tamper 
 	for i in $(seq $TAMPER_TOTAL)
 	do
-		g=TAMPER"$i"_GPIO
-		$GPIO -g mode ${!g} in			# setta il gpio nella modalita di lettura
-		#tamper_set_state $i 0
+		tamper_is_mqtt4alias $(tamper_get_alias4number $i)
+		local G=$?
+		if [ "$G" == "0" ]; then
+			g=TAMPER"$i"_GPIO
+			$GPIO -g mode ${!g} in			# setta il gpio nella modalita di lettura
+			#tamper_set_state $i 0
+		fi
 	done
 
 
@@ -267,6 +279,32 @@ function perimetral_get_gpio4number {
 }
 
 #
+# Verifica se il sensore perimetrale e' di tipo mqtt 
+# $1 alias sensore
+#
+function perimetral_is_mqtt4alias {
+	for i in $(seq $PERIMETRAL_TOTAL)
+	do
+		local g=PERIMETRAL"$i"_MQTT
+		local a=PERIMETRAL"$i"_ALIAS
+		local gv=${!g}
+		local av=${!a}
+		if [ "$av" == "$1" ]; then
+			if [ "$gv" == "1" ]; then
+				return 1
+			else
+				return 0
+			fi	
+		fi
+	done
+
+	log_write "ERROR perimetral sensor alias not found: $1"
+	#message_write "warning" "Perimetral sensor alias not found"
+	exit 1
+}
+
+
+#
 # Mostra lo stato di un sensore perimetrale
 # $1 alias sensore
 #
@@ -297,6 +335,39 @@ function perimetral_set_status {
 	fi
 
 	sensor_set_state "perimetral_$1" $2
+}
+
+#
+# Mostra lo stato di un sensore perimetrale ricevuto via mqtt
+# $1 alias sensore
+#
+function perimetral_get_mqttstatus {
+	if [[ "$(perimetral_alias_exists $1)" == "FALSE" ]]; then
+		local output="alias perimetral sensor not found: $1"
+		echo $output
+		log_write "ERROR $output"
+		#message_write "warning" "$output"
+		exit 
+	fi
+
+	sensor_get_state "mqtt_perimetral_$1"
+}
+
+#
+# Scrive lo stato di un sensore perimetrale ricevuto via mqtt
+# $1 alias sensore
+# $2 stato
+#
+function perimetral_set_mqttstatus {
+	if [[ "$(perimetral_alias_exists $1)" == "FALSE" ]]; then
+		local output="alias perimetral sensor not found: $1"
+		echo $output
+		log_write "ERROR $output"
+		#message_write "warning" "$output"
+		exit 
+	fi
+
+	sensor_set_state "mqtt_perimetral_$1" $2
 }
 
 #
@@ -405,6 +476,31 @@ function tamper_get_gpio4number {
 }
 
 #
+# Verifica se il sensore tamper e' di tipo mqtt 
+# $1 alias sensore
+#
+function tamper_is_mqtt4alias {
+	for i in $(seq $TAMPER_TOTAL)
+	do
+		local g=TAMPER"$i"_MQTT
+		local a=TAMPER"$i"_ALIAS
+		local gv=${!g}
+		local av=${!a}
+		if [ "$av" == "$1" ]; then
+			if [ "$gv" == "1" ]; then
+				return 1
+			else
+				return 0
+			fi	
+		fi
+	done
+
+	log_write "ERROR tamper sensor alias not found: $1"
+	#message_write "warning" "Tamper sensor alias not found"
+	exit 1
+}
+
+#
 # Mostra lo stato di un sensore tamper
 # $1 alias sensore
 #
@@ -434,6 +530,39 @@ function tamper_set_status {
 	fi
 	sensor_set_state "tamper_$1" $2
 }
+
+#
+# Mostra lo stato di un sensore tamper mqtt
+# $1 alias sensore
+#
+function tamper_get_mqttstatus {
+	if [[ "$(tamper_alias_exists $1)" == "FALSE" ]]; then
+		local output="alias tamper sensor not found: $1"
+		echo $output
+		log_write "ERROR $output"
+		#message_write "warning" "$output"
+		exit 
+	fi
+	sensor_get_state "mqtt_tamper_$1"
+}
+
+#
+# Scrive lo stato di un sensore tamper mqtt
+# $1 alias sensore
+# $2 stato
+#
+function tamper_set_mqttstatus {
+	if [[ "$(tamper_alias_exists $1)" == "FALSE" ]]; then
+		local output="alias tamper sensor not found: $1"
+		echo $output
+		log_write "ERROR $output"
+		#message_write "warning" "$output"
+		exit 
+	fi
+	sensor_set_state "mqtt_tamper_$1" $2
+}
+
+
 
 #
 # Mostra lo stato dei sensori tamper
@@ -541,6 +670,31 @@ function pir_get_gpio4number {
 }
 
 #
+# Verifica se il sensore pir e' di tipo mqtt 
+# $1 alias sensore
+#
+function pir_is_mqtt4alias {
+	for i in $(seq $PIR_TOTAL)
+	do
+		local g=PIR"$i"_MQTT
+		local a=PIR"$i"_ALIAS
+		local gv=${!g}
+		local av=${!a}
+		if [ "$av" == "$1" ]; then
+			if [ "$gv" == "1" ]; then
+				return 1
+			else
+				return 0
+			fi	
+		fi
+	done
+
+	log_write "ERROR pir sensor alias not found: $1"
+	#message_write "warning" "Tamper sensor alias not found"
+	exit 1
+}
+
+#
 # Mostra lo stato di un sensore pir
 # $1 alias sensore
 #
@@ -569,6 +723,37 @@ function pir_set_status {
 		exit 
 	fi
 	sensor_set_state "pir_$1" $2
+}
+
+#
+# Mostra lo stato di un sensore pir mqtt
+# $1 alias sensore
+#
+function pir_get_mqttstatus {
+	if [[ "$(pir_alias_exists $1)" == "FALSE" ]]; then
+		local output="alias pir sensor not found: $1"
+		echo $output
+		log_write "ERROR $output"
+		#message_write "warning" "$output"
+		exit 
+	fi
+	sensor_get_state "mqtt_pir_$1"
+}
+
+#
+# Scrive lo stato di un sensore pir mqtt
+# $1 alias sensore
+# $2 stato
+#
+function pir_set_mqttstatus {
+	if [[ "$(pir_alias_exists $1)" == "FALSE" ]]; then
+		local output="alias pir sensor not found: $1"
+		echo $output
+		log_write "ERROR $output"
+		#message_write "warning" "$output"
+		exit 
+	fi
+	sensor_set_state "mqtt_pir_$1" $2
 }
 
 #
@@ -1047,8 +1232,7 @@ RELEASE_VERSION=1
 
 DIR_SCRIPT=`dirname $0`
 NAME_SCRIPT=${0##*/}
-#CONFIG_ETC="/etc/piGarden.conf"
-CONFIG_ETC="/home/pi/piGuardian/conf/piGuardian.conf"
+CONFIG_ETC="/etc/piGuardian.conf"
 TMP_PATH="/run/shm"
 if [ ! -d "$TMP_PATH" ]; then
 	TMP_PATH="/tmp"

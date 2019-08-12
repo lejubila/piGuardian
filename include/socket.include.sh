@@ -89,6 +89,21 @@ function socket_server_command {
 			mqtt_status
 			;;
 
+		perimetral_set_mqttstatus)
+			perimetral_set_mqttstatus $arg2 $arg3 &> /dev/null
+			json_status
+			;;
+
+		pir_set_mqttstatus)
+			pir_set_mqttstatus $arg2 $arg3 &> /dev/null
+			json_status
+			;;
+
+		tamper_set_mqttstatus)
+			tamper_set_mqttstatus $arg2 $arg3 &> /dev/null
+			json_status
+			;;
+
 		*)
 			json_error 0 "invalid command"
 			;;

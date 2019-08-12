@@ -89,9 +89,16 @@ function start_guard()
 		#
 		for a in $SENSORS_PERIMETRAL
 		do
-			perimetral_get_gpio4alias $a
+
+			perimetral_is_mqtt4alias $a
 			local G=$?
-			local STATE=`$GPIO -g read $G`
+			if [ "$G" == "1" ]; then
+				local STATE=`perimetral_get_mqttstatus $a`
+			else
+				perimetral_get_gpio4alias $a
+				local G=$?
+				local STATE=`$GPIO -g read $G`
+			fi
 
 			# Sensore in allarme
 			if [ "$STATE" == "$PERIMETRAL_GPIO_STATE" ]; then
@@ -170,10 +177,18 @@ function start_guard()
 		#
 		for a in $SENSORS_PIR
 		do
-			pir_get_gpio4alias $a
+
+			pir_is_mqtt4alias $a
 			local G=$?
+			if [ "$G" == "1" ]; then
+				local STATE=`pir_get_mqttstatus $a`
+			else
+
+				pir_get_gpio4alias $a
+				local G=$?
 #echo $a - $?
-			local STATE=`$GPIO -g read $G`
+				local STATE=`$GPIO -g read $G`
+			fi
 
 			# Sensore in allarme
 			if [ "$STATE" == "$PIR_GPIO_STATE" ]; then
@@ -242,9 +257,16 @@ function start_guard()
 		#
 		for a in $SENSORS_TAMPER
 		do
-			tamper_get_gpio4alias $a
+
+			tamper_is_mqtt4alias $a
 			local G=$?
-			local STATE=`$GPIO -g read $G`
+			if [ "$G" == "1" ]; then
+				local STATE=`tamper_get_mqttstatus $a`
+			else
+				tamper_get_gpio4alias $a
+				local G=$?
+				local STATE=`$GPIO -g read $G`
+			fi
 
 			# Sensore in allarme
 			if [ "$STATE" == "$TAMPER_GPIO_STATE" ]; then

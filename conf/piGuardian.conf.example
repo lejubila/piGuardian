@@ -11,12 +11,6 @@ EVENT_DIR="/home/pi/piGuardian/events"
 # Posizione gpio
 GPIO="/usr/local/bin/gpio"
 
-# Posizione js
-#JQ="/usr/local/bin/jq"
-
-# Percorso curl
-#CURL="/usr/bin/curl"
-
 # Percorso wc
 WC="/usr/bin/wc"
 
@@ -33,24 +27,13 @@ TR="/usr/bin/tr"
 CUT="/usr/bin/cut"
 
 # Percorso tcpserver
-#TCPSERVER="/usr/bin/tcpserver"
-
-# Percorso cron
-#CRONTAB="/usr/bin/crontab"
+TCPSERVER="/usr/bin/tcpserver"
 
 # Percorso grep
 GREP="/bin/grep"
 
-# Percorsp sed
-SED="/bin/sed"
-
-# Percorso readlink
-READLINK="/bin/readlink"
-
 # Percorso mosquito_pub
-# Installare con apt install mosquitto-clients
 MOSQUITTO_PUB="/usr/bin/mosquitto_pub"
-
 
 
 # Tempo di attesa tra una lettura e l'altra dei sensori
@@ -74,24 +57,23 @@ PERIMETRAL3_ALIAS="PT_PORTE" 		#
 PERIMETRAL3_GPIO=22			# Gpio 3 / Physical 15
 
 
-
 # Valore in ingresso dei gpio relativi ai sensori pir che indica lo stato di apertura
 PIR_GPIO_STATE=1
 
 # Numero totale di sensori pir
-PIR_TOTAL=0
+PIR_TOTAL=4
 
 # Definizione dei sensori pir
 PIR1_ALIAS="P1" 			#
 PIR1_GPIO=19				# Gpio 24 / Physical 35
 
-PIR2_ALIAS="PT_INGRESSO" 		#
+PIR2_ALIAS="PT_CUCINA" 			#
 PIR2_GPIO=16				# Gpio 27 / Physical 36
 
-PIR3_ALIAS="PT_CUCINA"			#
+PIR3_ALIAS="PT_CAMERE"			#
 PIR3_GPIO=26				# Gpio 25 / Physical 37
 
-PIR4_ALIAS="PT_BAGNO" 			#
+PIR4_ALIAS="PT_SALA" 			#
 PIR4_GPIO=20				# Gpio 28 / Physical 38
 
 
@@ -102,8 +84,9 @@ TAMPER_GPIO_STATE=1
 TAMPER_TOTAL=0
 
 # Definizione dei sensori temper
-TAMPER1_ALIAS="PERIMETRAL_P1"		#
-TAMPER1_GPIO=0				#
+TAMPER1_ALIAS="PERIMETRAL_P1"           #
+TAMPER1_GPIO=0                          #
+
 
 
 # Valore gpio da scrivere per attivare spengere la sirena
@@ -117,6 +100,10 @@ SIREN_TOTAL=1
 SIREN1_ALIAS="SIRENA_INTERNA"		#
 SIREN1_GPIO="18"			# Gpio 1 / Physical 12
 
+SIREN2_ALIAS="SIRENA_ESTERNA"		#
+SIREN2_GPIO="23"			# Gpio 4 / Physical 16
+
+
 
 # Indirizzo ip e porta di ascolto del socket server
 TCPSERVER_IP="127.0.0.1"
@@ -126,12 +113,13 @@ TCPSERVER_PORT="8084"
 TCPSERVER_USER=""
 TCPSERVER_PWD=""
 
+
 # Parametri connessione al broker mqtt
-MQTT_ENABLE=0	# set 1 to enable
-MQTT_HOST=you_host_mqtt
+MQTT_ENABLE=1
+MQTT_HOST=your_host_brocker_mqtt
 MQTT_PORT=1883
-MQTT_USER=your_user_mqtt
-MQTT_PWD=yout_password_mqtt
+MQTT_USER=your_user
+MQTT_PWD=your_password
 MQTT_TOPIC="piguardian/result"
 MQTT_CLIENT_ID=piGuardian
 
